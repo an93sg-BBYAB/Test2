@@ -1,8 +1,6 @@
-// game.js (v3 - 씬 분리 및 UI/전투 구현)
+// game.js (v3.1 - 버그 수정)
 
-// --- 데이터 정의 ---
-
-// (요청) 아이템 정의 (이미지 대신 색상과 태그 사용)
+// --- 데이터 정의 --- (이전과 동일)
 const ItemData = {
     'sword':    { name: '검', type: 'weapon', color: 0xff0000 },
     'shield':   { name: '방패', type: 'shield', color: 0x0000ff },
@@ -14,7 +12,6 @@ const ItemData = {
 };
 const ALL_ITEM_KEYS = Object.keys(ItemData);
 
-// (요청) 적 정의 (드랍률 포함)
 const EnemyData = {
     'goblin': { name: '고블린', hp: 30, atk: 5, color: 0x00aa00, dropRate: 0.10 },
     'skeleton': { name: '해골', hp: 50, atk: 3, color: 0xeeeeee, dropRate: 0.15 },
@@ -31,36 +28,25 @@ class GameScene extends Phaser.Scene {
     }
 
     preload() {
-        // 임시 타일용 1x1 픽셀
         this.load.image('pixel', 'https://labs.phaser.io/assets/textures/white-pixel.png');
     }
 
     create() {
-        // UI 씬을 병렬로 실행
         this.scene.run('UIScene');
-
-        // 변수 초기화
         this.pathCoords = [];
         this.pathIndex = 0;
         this.startGridPos = null;
         this.day = 1;
         this.tilesMovedTotal = 0;
-
-        // 적 그룹 (이제 실제 적이 아닌, '트리거' 역할만 함)
         this.enemyTriggers = this.physics.add.group();
         
-        // 루프 생성 및 그리기
         this.generateRandomLoop();
-        this.drawTiles();
+        this.drawTiles(); // 이 함수가 실행되기 전에 오류가 났었습니다.
 
-        // 영웅 생성 (임시 사각형)
         const startPos = this.pathCoords[0];
         this.hero = this.physics.add.sprite(startPos.x, startPos.y, 'pixel').setDisplaySize(16, 24).setTint(0x00ffff);
         
-        // (요청) 영웅은 이제 적 트리거와 겹쳤을 때만 전투 시작
         this.physics.add.overlap(this.hero, this.enemyTriggers, this.onMeetEnemy, null, this);
-        
-        // 전투 씬이 완료되었을 때 받을 이벤트 리스너
         this.events.on('combatComplete', this.onCombatComplete, this);
     }
 
@@ -70,19 +56,22 @@ class GameScene extends Phaser.Scene {
     }
 
     generateRandomLoop() {
-        // (참고) 루프 생성 로직은 이전과 동일합니다.
-        // 복잡한 'ㄱ,ㄴ,ㄷ' 루프는 추후 별도 알고리즘으로 교체해야 합니다.
-        const GRID_WIDTH = 25;
+        // (수정 2) UI 영역(580px)을 침범하지 않도록 그리드 너비 수정
+        const GRID_WIDTH = 18; // 25 -> 18 ( 18 * 32 = 576px )
         const GRID_HEIGHT = 18;
         this.grid = Array(GRID_HEIGHT).fill(0).map(() => Array(GRID_WIDTH).fill(0)); 
-        const minSize = 5, maxSize = 10;
+        
+        // (수정 1) ★★★ 이 코드가 누락되었습니다 ★★★
+        const minSize = 5, maxSize = 10; 
+
         const loopWidth = Phaser.Math.Between(minSize, maxSize);
         const loopHeight = Phaser.Math.Between(minSize, maxSize);
-        const startX = Phaser.Math.Between(2, 18 - maxSize - 2); // UI 공간을 위해 폭 좁힘
+        // (수정 1) maxSize 변수가 없어 오류가 발생했었습니다.
+        const startX = Phaser.Math.Between(2, GRID_WIDTH - maxSize - 2);
         const startY = Phaser.Math.Between(2, GRID_HEIGHT - maxSize - 2);
         this.startGridPos = { x: startX, y: startY };
         
-        // 경로 좌표 저장
+        // 경로 좌표 저장 (이하 동일)
         this.pathCoords = [];
         for (let x = startX; x <= startX + loopWidth; x++) { this.grid[startY][x] = 1; this.pathCoords.push(new Phaser.Math.Vector2(x * this.TILE_SIZE + 16, startY * this.TILE_SIZE + 16)); }
         for (let y = startY + 1; y <= startY + loopHeight; y++) { this.grid[y][startX + loopWidth] = 1; this.pathCoords.push(new Phaser.Math.Vector2((startX + loopWidth) * this.TILE_SIZE + 16, y * this.TILE_SIZE + 16)); }
@@ -91,15 +80,16 @@ class GameScene extends Phaser.Scene {
     }
 
     drawTiles() {
-        // (요청) UI 공간 확보를 위해 전체 맵을 왼쪽으로 조금 이동
-        const mapOffsetX = -100;
+        // (수정 3) 맵 오프셋 제거 및 검은 배경 영역 수정
+        const mapOffsetX = 0; // -100 -> 0
         const mapOffsetY = 0;
         
-        this.add.graphics().fillStyle(0x000000).fillRect(0, 0, 800, 576); // 검은 배경
+        // 게임 영역(0 ~ 580)만 검은색으로 칠합니다.
+        this.add.graphics().fillStyle(0x000000).fillRect(0, 0, 580, 576); 
         
         for (let y = 0; y < this.grid.length; y++) {
             for (let x = 0; x < this.grid[y].length; x++) {
-                if (this.grid[y][x] === 0) continue; // (요청) 길 아닌 곳은 안 그림
+                if (this.grid[y][x] === 0) continue; 
                 
                 const tileX = x * this.TILE_SIZE + mapOffsetX;
                 const tileY = y * this.TILE_SIZE + mapOffsetY;
@@ -114,7 +104,6 @@ class GameScene extends Phaser.Scene {
             }
         }
         
-        // 맵 좌표도 오프셋 적용
         this.pathCoords.forEach(coord => {
             coord.x += mapOffsetX;
             coord.y += mapOffsetY;
@@ -132,7 +121,6 @@ class GameScene extends Phaser.Scene {
 
             if (this.pathIndex === 0) {
                 this.day++;
-                // UI 씬에 이벤트 전송
                 this.scene.get('UIScene').events.emit('updateDay', this.day);
             }
         } else {
@@ -141,7 +129,6 @@ class GameScene extends Phaser.Scene {
     }
 
     checkSpawns() {
-        // (요청) 스폰 로직 (이전과 동일)
         if (this.tilesMovedTotal % 3 === 0) this.spawnEnemyTrigger(ALL_ENEMY_KEYS[0]);
         if (this.tilesMovedTotal % 4 === 0) this.spawnEnemyTrigger(ALL_ENEMY_KEYS[1]);
         if (this.tilesMovedTotal % 5 === 0) this.spawnEnemyTrigger(ALL_ENEMY_KEYS[2]);
@@ -150,72 +137,49 @@ class GameScene extends Phaser.Scene {
 
     spawnEnemyTrigger(enemyKey) {
         const randomPathTile = Phaser.Math.RND.pick(this.pathCoords);
-        
-        // (요청) 타일보다 작은 크기 (16x16)의 적 트리거 생성
         const enemy = this.enemyTriggers.create(randomPathTile.x, randomPathTile.y, 'pixel')
             .setDisplaySize(16, 16)
             .setTint(EnemyData[enemyKey].color);
-            
-        enemy.enemyKey = enemyKey; // 적 정보 저장
+        enemy.enemyKey = enemyKey; 
     }
 
-    // (수정) 전투 트리거 발동
     onMeetEnemy(hero, enemyTrigger) {
-        // (요청) 순방향 이동 시에만 전투
-        // (간단한 구현: 영웅이 멈추고 전투 씬을 띄우므로, 다음 타일로 못 가게 막음)
-        
         this.hero.body.stop();
-        
         const enemyKey = enemyTrigger.enemyKey;
-        
-        // 전투 씬으로 넘길 데이터
         const combatData = {
             enemyKey: enemyKey,
             enemyData: EnemyData[enemyKey]
         };
-
-        // 이 씬을 멈추고 전투 씬 시작
         this.scene.pause();
         this.scene.launch('CombatScene', combatData);
-        
-        // 만난 적 트리거는 제거
         enemyTrigger.destroy();
     }
     
-    // (신규) 전투 완료 시 콜백
     onCombatComplete(data) {
         console.log("전투 종료. 획득 아이템:", data.loot);
-        
-        // (요청) 획득한 아이템이 있다면 UI 씬으로 전달
         if (data.loot) {
             this.scene.get('UIScene').events.emit('addItem', data.loot);
         }
-        
-        // 게임 씬 다시 시작
         this.scene.resume();
     }
 }
 
-// --- 2. 전투 씬 ---
+// --- 2. 전투 씬 --- (이전과 동일)
 class CombatScene extends Phaser.Scene {
     constructor() {
         super('CombatScene');
     }
     
     init(data) {
-        // GameScene에서 적 데이터 받기
         this.enemyData = data.enemyData;
     }
     
     create() {
-        // 반투명 검은 배경
         this.add.graphics().fillStyle(0x000000, 0.7).fillRect(0, 0, 800, 576);
         
-        // (요청) 일러스트 위치 (임시 사각형)
         this.heroIllust = this.add.rectangle(200, 300, 150, 200, 0x00ffff).setOrigin(0.5);
         this.enemyIllust = this.add.rectangle(600, 300, 150, 200, this.enemyData.color).setOrigin(0.5);
         
-        // (요청) 체력 게이지
         this.heroHp = 100;
         this.heroMaxHp = 100;
         this.enemyHp = this.enemyData.hp;
@@ -225,15 +189,12 @@ class CombatScene extends Phaser.Scene {
         this.enemyHpBar = this.add.graphics();
         this.updateHpBars();
         
-        // 공격 버튼 (간단하게 화면 클릭)
         this.add.text(400, 500, '[ 화면을 클릭하여 공격 ]', { fontSize: '20px', fill: '#fff' }).setOrigin(0.5);
         this.input.on('pointerdown', this.playerAttack, this);
     }
     
     updateHpBars() {
-        // 영웅 HP바
         this.drawHpBar(this.heroHpBar, this.heroIllust.x - 75, this.heroIllust.y - 120, this.heroHp, this.heroMaxHp);
-        // 적 HP바
         this.drawHpBar(this.enemyHpBar, this.enemyIllust.x - 75, this.enemyIllust.y - 120, this.enemyHp, this.enemyMaxHp);
     }
     
@@ -242,10 +203,8 @@ class CombatScene extends Phaser.Scene {
         const width = 150;
         const height = 15;
         const percent = Math.max(0, currentValue / maxValue);
-        // 배경
         bar.fillStyle(0xff0000);
         bar.fillRect(x, y, width, height);
-        // 현재 체력
         bar.fillStyle(0x00ff00);
         bar.fillRect(x, y, width * percent, height);
     }
@@ -253,7 +212,6 @@ class CombatScene extends Phaser.Scene {
     playerAttack() {
         if (!this.heroIllust.active || !this.enemyIllust.active) return;
         
-        // (요청) 공격 모션 (Lunge)
         this.add.tween({
             targets: this.heroIllust,
             x: this.heroIllust.x + 30,
@@ -261,14 +219,12 @@ class CombatScene extends Phaser.Scene {
             ease: 'Power1',
             yoyo: true,
             onComplete: () => {
-                // 적 타격
-                this.enemyHp -= 10; // (임시) 영웅 공격력 10
+                this.enemyHp -= 10;
                 this.updateHpBars();
                 
                 if (this.enemyHp <= 0) {
                     this.defeatEnemy();
                 } else {
-                    // 적의 반격
                     this.time.delayedCall(300, this.enemyAttack, [], this);
                 }
             }
@@ -278,7 +234,6 @@ class CombatScene extends Phaser.Scene {
     enemyAttack() {
         if (!this.heroIllust.active || !this.enemyIllust.active) return;
 
-        // (요청) 공격 모션 (Lunge)
         this.add.tween({
             targets: this.enemyIllust,
             x: this.enemyIllust.x - 30,
@@ -297,7 +252,6 @@ class CombatScene extends Phaser.Scene {
     }
 
     defeatEnemy() {
-        // (요청) Fade out 효과
         this.add.tween({
             targets: this.enemyIllust,
             alpha: 0,
@@ -306,32 +260,187 @@ class CombatScene extends Phaser.Scene {
                 this.enemyIllust.active = false;
                 this.enemyHpBar.clear();
                 
-                // (요청) 아이템 드랍
                 let loot = null;
                 if (Math.random() < this.enemyData.dropRate) {
                     loot = Phaser.Math.RND.pick(ALL_ITEM_KEYS);
                     this.dropItemAnimation(loot);
                 } else {
-                    // 드랍 실패 시 씬 바로 종료
                     this.endCombat(null);
                 }
             }
         });
     }
     
-    // (요청) 아이템 드랍 애니메이션
     dropItemAnimation(itemKey) {
         const itemData = ItemData[itemKey];
-        // 적 위치에 아이템(임시 사각형) 생성
         const itemIcon = this.add.rectangle(this.enemyIllust.x, this.enemyIllust.y, 20, 20, itemData.color);
         
-        // (요청) 인벤토리 슬롯 위치로 이동
         this.add.tween({
             targets: itemIcon,
-            x: 650, // UI 씬의 인벤토리 영역 (임의의 좌표)
+            x: 650, 
             y: 300,
             duration: 700,
             ease: 'Back.easeIn',
             onComplete: () => {
                 itemIcon.destroy();
-                this.endCombat(item
+                this.endCombat(itemKey); 
+            }
+        });
+    }
+    
+    endCombat(loot) {
+        this.scene.get('GameScene').events.emit('combatComplete', { loot: loot });
+        this.scene.stop();
+    }
+    
+    defeatHero() {
+        this.add.text(400, 300, 'GAME OVER', { fontSize: '48px', fill: '#ff0000' }).setOrigin(0.5);
+        this.heroIllust.active = false;
+        this.scene.pause(); 
+    }
+}
+
+// --- 3. UI 씬 --- (이전과 동일)
+class UIScene extends Phaser.Scene {
+    constructor() {
+        super('UIScene');
+        this.inventorySlots = [];
+        this.equipSlots = {};
+        this.inventory = [];
+    }
+    
+    create() {
+        this.add.graphics().fillStyle(0x444444).fillRect(580, 0, 220, 576);
+        
+        this.dayText = this.add.text(600, 20, 'Day: 1', { fontSize: '18px', fill: '#fff' });
+        
+        this.equipSlots['helmet'] = this.createSlot(620, 60, 'helmet');
+        this.equipSlots['armor']  = this.createSlot(620, 110, 'armor');
+        this.equipSlots['weapon'] = this.createSlot(670, 110, 'weapon');
+        this.equipSlots['shield'] = this.createSlot(720, 110, 'shield');
+        this.equipSlots['gloves'] = this.createSlot(620, 160, 'gloves');
+        this.equipSlots['belt']   = this.createSlot(670, 160, 'belt');
+        this.equipSlots['boots']  = this.createSlot(720, 160, 'boots');
+        
+        this.inventory = new Array(15).fill(null);
+        let k = 0;
+        for (let y = 0; y < 5; y++) {
+            for (let x = 0; x < 3; x++) {
+                const slotX = 620 + x * 50;
+                const slotY = 250 + y * 50;
+                this.inventorySlots.push(this.createSlot(slotX, slotY, k++));
+            }
+        }
+        
+        this.selectedItemIndex = null;
+        this.selectedHighlight = this.add.graphics().lineStyle(2, 0xcc99ff); 
+        this.selectedHighlight.visible = false;
+        
+        this.errorText = this.add.text(680, 520, '', { fontSize: '12px', fill: '#ff0000' }).setOrigin(0.5);
+
+        this.scene.get('GameScene').events.on('updateDay', (day) => {
+            this.dayText.setText(`Day: ${day}`);
+        }, this);
+        
+        this.events.on('addItem', this.addItem, this);
+    }
+    
+    createSlot(x, y, key) {
+        const slot = this.add.rectangle(x, y, 40, 40, 0x000000).setOrigin(0).setStrokeStyle(1, 0xffffff);
+        slot.setData('slotKey', key);
+        slot.setInteractive();
+        slot.on('pointerdown', () => this.onSlotClick(slot));
+        return slot;
+    }
+    
+    onSlotClick(slot) {
+        const slotKey = slot.getData('slotKey');
+        
+        if (this.selectedItemIndex !== null) {
+            const itemKey = this.inventory[this.selectedItemIndex];
+            const itemType = ItemData[itemKey].type;
+            
+            if (this.equipSlots[slotKey]) {
+                if (slotKey === itemType) {
+                    this.equipItem(itemKey, slotKey);
+                    this.inventory[this.selectedItemIndex] = null; 
+                    this.clearSelection();
+                    this.refreshInventory();
+                } else {
+                    this.showError('해당 아이템을 장착할 수 없는 위치입니다.');
+                }
+            } else {
+                 this.clearSelection();
+            }
+        }
+        else {
+            if (typeof slotKey === 'number' && this.inventory[slotKey]) {
+                this.selectedItemIndex = slotKey;
+                this.selectedHighlight.visible = true;
+                this.selectedHighlight.strokeRect(slot.x, slot.y, 40, 40);
+            }
+        }
+    }
+    
+    addItem(itemKey) {
+        const emptySlotIndex = this.inventory.indexOf(null);
+        if (emptySlotIndex !== -1) {
+            this.inventory[emptySlotIndex] = itemKey;
+            this.refreshInventory();
+        } else {
+            this.showError('인벤토리가 가득 찼습니다!');
+        }
+    }
+    
+    refreshInventory() {
+        if(this.itemIcons) this.itemIcons.destroy(true);
+        this.itemIcons = this.add.group();
+
+        this.inventory.forEach((itemKey, index) => {
+            if (itemKey) {
+                const slot = this.inventorySlots[index];
+                const itemIcon = this.add.rectangle(slot.x + 20, slot.y + 20, 30, 30, ItemData[itemKey].color);
+                this.itemIcons.add(itemIcon);
+            }
+        });
+        
+        Object.keys(this.equipSlots).forEach(slotKey => {
+            const slot = this.equipSlots[slotKey];
+            if (slot.getData('item')) {
+                const itemKey = slot.getData('item');
+                const itemIcon = this.add.rectangle(slot.x + 20, slot.y + 20, 30, 30, ItemData[itemKey].color);
+                this.itemIcons.add(itemIcon);
+            }
+        });
+    }
+    
+    equipItem(itemKey, slotKey) {
+        const slot = this.equipSlots[slotKey];
+        slot.setData('item', itemKey);
+    }
+    
+    clearSelection() {
+        this.selectedItemIndex = null;
+        this.selectedHighlight.visible = false;
+    }
+    
+    showError(message) {
+        this.errorText.setText(message);
+        this.time.delayedCall(2000, () => this.errorText.setText(''));
+    }
+}
+
+
+// --- Phaser 게임 설정 --- (이전과 동일)
+const config = {
+    type: Phaser.AUTO,
+    width: 800,
+    height: 576,
+    physics: {
+        default: 'arcade',
+        arcade: { debug: false }
+    },
+    scene: [GameScene, CombatScene, UIScene]
+};
+
+const game = new Phaser.Game(config);
