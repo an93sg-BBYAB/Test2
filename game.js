@@ -1,6 +1,6 @@
-// game.js (v3.2 - 6개 요청 사항 반영)
+// game.js (v4 - Loop Hero UI 뼈대 재구축 시작)
 
-// --- 데이터 정의 --- (동일)
+// --- 데이터 정의 --- (이전과 동일)
 const ItemData = {
     'sword':    { name: '검', type: 'weapon', color: 0xff0000 },
     'shield':   { name: '방패', type: 'shield', color: 0x0000ff },
@@ -13,10 +13,10 @@ const ItemData = {
 const ALL_ITEM_KEYS = Object.keys(ItemData);
 
 const EnemyData = {
-    'goblin': { name: '고블린', hp: 30, atk: 5, color: 0x00aa00, dropRate: 0.10 },
-    'skeleton': { name: '해골', hp: 50, atk: 3, color: 0xeeeeee, dropRate: 0.15 },
-    'orc': { name: '오크', hp: 80, atk: 8, color: 0x008800, dropRate: 0.20 },
-    'demon': { name: '악마', hp: 40, atk: 12, color: 0xcc0000, dropRate: 0.25 }
+    'goblin': { name: '고블린', hp: 30, atk: 5, color: 0x00aa00, dropRate: 0.10, illustKey: 'goblin_illust' },
+    'skeleton': { name: '해골', hp: 50, atk: 3, color: 0xeeeeee, dropRate: 0.15, illustKey: 'skeleton_illust' },
+    'orc': { name: '오크', hp: 80, atk: 8, color: 0x008800, dropRate: 0.20, illustKey: 'orc_illust' },
+    'demon': { name: '악마', hp: 40, atk: 12, color: 0xcc0000, dropRate: 0.25, illustKey: 'demon_illust' }
 };
 const ALL_ENEMY_KEYS = Object.keys(EnemyData);
 
@@ -25,10 +25,20 @@ class GameScene extends Phaser.Scene {
     constructor() {
         super('GameScene');
         this.TILE_SIZE = 32;
+        // (수정) 맵의 시작 오프셋 (Loop Hero 처럼 UI와 겹치지 않게 왼쪽으로 옮김)
+        this.MAP_OFFSET_X = 50; 
+        this.MAP_OFFSET_Y = 100;
     }
 
     preload() {
         this.load.image('pixel', 'https://labs.phaser.io/assets/textures/white-pixel.png');
+        // (신규) 영웅 일러스트 로드 (전투 씬용) - 임시 사각형
+        this.load.image('hero_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png'); 
+        // (신규) 적 일러스트 로드 (전투 씬용) - 임시 사각형
+        this.load.image('goblin_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png');
+        this.load.image('skeleton_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png');
+        this.load.image('orc_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png');
+        this.load.image('demon_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png');
     }
 
     create() {
@@ -40,18 +50,19 @@ class GameScene extends Phaser.Scene {
         this.tilesMovedTotal = 0;
         this.enemyTriggers = this.physics.add.group();
         
-        this.generateRandomLoop();
+        // (수정) 맵과 UI의 크기 조절에 따라 그리드 사이즈 조정
+        const GRID_WIDTH = 15; // 18 -> 15 (15 * 32 = 480px)
+        const GRID_HEIGHT = 12; // 18 -> 12 (12 * 32 = 384px)
+        this.generateRandomLoop(GRID_WIDTH, GRID_HEIGHT);
         this.drawTiles();
 
         const startPos = this.pathCoords[0];
         this.hero = this.physics.add.sprite(startPos.x, startPos.y, 'pixel').setDisplaySize(16, 24).setTint(0x00ffff);
         
-        // (요청 3) 영웅 HP 변수 초기화
         this.hero.hp = 100;
         this.hero.maxHp = 100;
         
-        // UI 씬에 초기 HP 전송
-        this.time.delayedCall(100, () => { // UIScene이 생성될 시간을 줌
+        this.time.delayedCall(100, () => { 
              this.scene.get('UIScene').events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp);
         });
 
@@ -64,15 +75,14 @@ class GameScene extends Phaser.Scene {
         this.moveHero();
     }
 
-    generateRandomLoop() {
-        const GRID_WIDTH = 18; 
-        const GRID_HEIGHT = 18;
-        this.grid = Array(GRID_HEIGHT).fill(0).map(() => Array(GRID_WIDTH).fill(0)); 
-        const minSize = 5, maxSize = 10; 
+    // (수정) 그리드 크기를 매개변수로 받음
+    generateRandomLoop(gridWidth, gridHeight) {
+        this.grid = Array(gridHeight).fill(0).map(() => Array(gridWidth).fill(0)); 
+        const minSize = 5, maxSize = 8; // 맵이 작아져서 maxSize도 줄임
         const loopWidth = Phaser.Math.Between(minSize, maxSize);
         const loopHeight = Phaser.Math.Between(minSize, maxSize);
-        const startX = Phaser.Math.Between(2, GRID_WIDTH - maxSize - 2);
-        const startY = Phaser.Math.Between(2, GRID_HEIGHT - maxSize - 2);
+        const startX = Phaser.Math.Between(1, gridWidth - maxSize - 1); // 가장자리를 피함
+        const startY = Phaser.Math.Between(1, gridHeight - maxSize - 1);
         this.startGridPos = { x: startX, y: startY };
         
         this.pathCoords = [];
@@ -80,15 +90,23 @@ class GameScene extends Phaser.Scene {
         for (let y = startY + 1; y <= startY + loopHeight; y++) { this.grid[y][startX + loopWidth] = 1; this.pathCoords.push(new Phaser.Math.Vector2((startX + loopWidth) * this.TILE_SIZE + 16, y * this.TILE_SIZE + 16)); }
         for (let x = startX + loopWidth - 1; x >= startX; x--) { this.grid[startY + loopHeight][x] = 1; this.pathCoords.push(new Phaser.Math.Vector2(x * this.TILE_SIZE + 16, (startY + loopHeight) * this.TILE_SIZE + 16)); }
         for (let y = startY + loopHeight - 1; y > startY; y--) { this.grid[y][startX] = 1; this.pathCoords.push(new Phaser.Math.Vector2(startX * this.TILE_SIZE + 16, y * this.TILE_SIZE + 16)); }
+
+        // (수정) 경로 좌표에 오프셋 적용
+        this.pathCoords.forEach(coord => {
+            coord.x += this.MAP_OFFSET_X;
+            coord.y += this.MAP_OFFSET_Y;
+        });
     }
 
     drawTiles() {
-        this.add.graphics().fillStyle(0x000000).fillRect(0, 0, 580, 576); 
+        // 게임 맵 영역만 검은색으로 칠함
+        this.add.graphics().fillStyle(0x000000).fillRect(0, 0, 800, 576); 
+        
         for (let y = 0; y < this.grid.length; y++) {
             for (let x = 0; x < this.grid[y].length; x++) {
                 if (this.grid[y][x] === 0) continue; 
-                const tileX = x * this.TILE_SIZE;
-                const tileY = y * this.TILE_SIZE;
+                const tileX = x * this.TILE_SIZE + this.MAP_OFFSET_X;
+                const tileY = y * this.TILE_SIZE + this.MAP_OFFSET_Y;
                 let tint;
                 if (x === this.startGridPos.x && y === this.startGridPos.y) tint = 0x0000ff; 
                 else tint = 0x888888; 
@@ -109,8 +127,6 @@ class GameScene extends Phaser.Scene {
             if (this.pathIndex === 0) {
                 this.day++;
                 this.scene.get('UIScene').events.emit('updateDay', this.day);
-                
-                // (요청 3) 출발점 도착 시 HP 회복
                 this.hero.hp = this.hero.maxHp;
                 this.scene.get('UIScene').events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp);
             }
@@ -139,23 +155,18 @@ class GameScene extends Phaser.Scene {
         const enemyKey = enemyTrigger.enemyKey;
         const combatData = {
             enemyData: EnemyData[enemyKey],
-            // (요청 3) 현재 HP를 전투 씬으로 전달
             heroHp: this.hero.hp,
             heroMaxHp: this.hero.maxHp
         };
 
-        // (요청 1) UI 씬도 함께 정지
-        this.scene.pause('UIScene');
+        this.scene.pause('UIScene'); // (수정) UI 씬도 함께 정지
         this.scene.pause();
         this.scene.launch('CombatScene', combatData);
         enemyTrigger.destroy();
     }
     
     onCombatComplete(data) {
-        // (요청 1) UI 씬 재개
         this.scene.resume('UIScene');
-        
-        // (요청 3) 전투 결과 HP를 영웅에게 반영
         this.hero.hp = data.heroHp;
         this.scene.get('UIScene').events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp);
         
@@ -163,13 +174,10 @@ class GameScene extends Phaser.Scene {
             this.scene.get('UIScene').events.emit('addItem', data.loot);
         }
         
-        // (요청 3) HP가 0 이하면 게임 오버
         if (this.hero.hp <= 0) {
             this.hero.destroy();
-            this.add.text(290, 300, 'GAME OVER', { fontSize: '40px', fill: '#ff0000' }).setOrigin(0.5);
-            // 씬을 재개하지 않음
+            this.add.text(this.game.config.width / 2, this.game.config.height / 2, 'GAME OVER', { fontSize: '40px', fill: '#ff0000' }).setOrigin(0.5);
         } else {
-            // 살아있으면 씬 재개
             this.scene.resume();
         }
     }
@@ -179,35 +187,42 @@ class GameScene extends Phaser.Scene {
 class CombatScene extends Phaser.Scene {
     constructor() {
         super('CombatScene');
+        this.combatRunning = false;
+        this.turnDelay = 1000; // 각 턴 사이의 지연 시간 (1초)
     }
     
     init(data) {
         this.enemyData = data.enemyData;
-        // (요청 3) GameScene으로부터 HP 받아오기
         this.heroHp = data.heroHp;
         this.heroMaxHp = data.heroMaxHp;
+        this.enemyHp = this.enemyData.hp;
+        this.enemyMaxHp = this.enemyData.hp;
     }
     
     create() {
-        this.add.graphics().fillStyle(0x000000, 0.7).fillRect(0, 0, 800, 576);
+        // (수정) 전체 화면을 덮는 배경
+        this.add.graphics().fillStyle(0x000000, 0.9).fillRect(0, 0, 800, 576); 
         
-        this.heroIllust = this.add.rectangle(200, 300, 150, 200, 0x00ffff).setOrigin(0.5);
-        this.enemyIllust = this.add.rectangle(600, 300, 150, 200, this.enemyData.color).setOrigin(0.5);
+        // (신규) 전투 배경 이미지 (임시 사각형) - Loop Hero처럼 중앙에 배치
+        this.add.rectangle(400, 300, 700, 400, 0x333333); // 전투 배경 (어두운 회색)
         
-        this.enemyHp = this.enemyData.hp;
-        this.enemyMaxHp = this.enemyData.hp;
+        // (수정) 일러스트 크기 확대 및 위치 조정
+        this.heroIllust = this.add.image(250, 350, 'hero_illust').setDisplaySize(180, 240).setTint(0x00ffff);
+        this.enemyIllust = this.add.image(550, 350, this.enemyData.illustKey).setDisplaySize(180, 240).setTint(this.enemyData.color);
         
         this.heroHpBar = this.add.graphics();
         this.enemyHpBar = this.add.graphics();
         this.updateHpBars();
         
         // (요청 2) 자동 전투 시작
-        this.time.delayedCall(500, this.playerAttack, [], this);
+        this.combatRunning = true;
+        this.time.delayedCall(this.turnDelay, this.playerAttack, [], this); // 첫 공격은 영웅이
     }
     
     updateHpBars() {
-        this.drawHpBar(this.heroHpBar, this.heroIllust.x - 75, this.heroIllust.y - 120, this.heroHp, this.heroMaxHp);
-        this.drawHpBar(this.enemyHpBar, this.enemyIllust.x - 75, this.enemyIllust.y - 120, this.enemyHp, this.enemyMaxHp);
+        // (수정) HP 게이지 위치 조정 (일러스트 머리 위)
+        this.drawHpBar(this.heroHpBar, this.heroIllust.x - 75, this.heroIllust.y - 150, this.heroHp, this.heroMaxHp);
+        this.drawHpBar(this.enemyHpBar, this.enemyIllust.x - 75, this.enemyIllust.y - 150, this.enemyHp, this.enemyMaxHp);
     }
     
     drawHpBar(bar, x, y, currentValue, maxValue) {
@@ -221,9 +236,8 @@ class CombatScene extends Phaser.Scene {
         bar.fillRect(x, y, width * percent, height);
     }
 
-    // (요청 2) 자동 전투 로직
     playerAttack() {
-        if (!this.heroIllust.active || !this.enemyIllust.active) return;
+        if (!this.combatRunning || !this.heroIllust.active || !this.enemyIllust.active) return;
         
         this.add.tween({
             targets: this.heroIllust,
@@ -232,22 +246,20 @@ class CombatScene extends Phaser.Scene {
             ease: 'Power1',
             yoyo: true,
             onComplete: () => {
-                this.enemyHp -= 10; // 임시 영웅 공격력
+                this.enemyHp -= 10; 
                 this.updateHpBars();
                 
                 if (this.enemyHp <= 0) {
                     this.defeatEnemy();
                 } else {
-                    // 1초 후 적의 반격
-                    this.time.delayedCall(1000, this.enemyAttack, [], this);
+                    this.time.delayedCall(this.turnDelay, this.enemyAttack, [], this);
                 }
             }
         });
     }
     
-    // (요청 2) 자동 전투 로직
     enemyAttack() {
-        if (!this.heroIllust.active || !this.enemyIllust.active) return;
+        if (!this.combatRunning || !this.heroIllust.active || !this.enemyIllust.active) return;
 
         this.add.tween({
             targets: this.enemyIllust,
@@ -262,14 +274,14 @@ class CombatScene extends Phaser.Scene {
                 if (this.heroHp <= 0) {
                     this.defeatHero();
                 } else {
-                    // 1초 후 영웅의 공격
-                    this.time.delayedCall(1000, this.playerAttack, [], this);
+                    this.time.delayedCall(this.turnDelay, this.playerAttack, [], this);
                 }
             }
         });
     }
 
     defeatEnemy() {
+        this.combatRunning = false;
         this.add.tween({
             targets: this.enemyIllust,
             alpha: 0,
@@ -294,7 +306,7 @@ class CombatScene extends Phaser.Scene {
         
         this.add.tween({
             targets: itemIcon,
-            x: 650, y: 300,
+            x: 650, y: 300, // UI 씬의 인벤토리 대략 중앙
             duration: 700,
             ease: 'Back.easeIn',
             onComplete: () => {
@@ -305,7 +317,7 @@ class CombatScene extends Phaser.Scene {
     }
     
     endCombat(loot) {
-        // (요청 3) 전투 종료 시의 HP를 GameScene으로 전달
+        this.combatRunning = false;
         this.scene.get('GameScene').events.emit('combatComplete', { 
             loot: loot, 
             heroHp: this.heroHp 
@@ -314,10 +326,10 @@ class CombatScene extends Phaser.Scene {
     }
     
     defeatHero() {
+        this.combatRunning = false;
         this.add.text(400, 300, 'YOU DIED', { fontSize: '48px', fill: '#ff0000' }).setOrigin(0.5);
         this.heroIllust.active = false;
         this.heroHpBar.clear();
-        // 2초 후 전투 종료 (HP 0인 상태로)
         this.time.delayedCall(2000, () => {
             this.endCombat(null); 
         }, [], this);
@@ -332,48 +344,65 @@ class UIScene extends Phaser.Scene {
         this.equipSlots = {};
         this.inventory = [];
         this.labelStyle = { fontSize: '11px', fill: '#ffffff', align: 'center' };
+        this.inventoryLabelStyle = { fontSize: '16px', fill: '#fff', align: 'left' };
     }
     
     create() {
+        // (수정) Loop Hero 스타일에 맞춰 UI 프레임 배치
+        
+        // 상단 UI 프레임 (임시)
+        this.add.graphics().fillStyle(0x333333).fillRect(0, 0, 800, 80); 
+        this.add.text(10, 10, '시간의 흐름', { fontSize: '12px', fill: '#fff' });
+        this.dayText = this.add.text(80, 10, 'Day: 1', { fontSize: '16px', fill: '#fff' });
+        this.add.text(200, 10, '계획', { fontSize: '12px', fill: '#fff' });
+        this.add.text(300, 10, '게임 UI 화면', { fontSize: '12px', fill: '#fff' });
+        this.add.text(450, 10, '몇 번째 루프인지 표시', { fontSize: '12px', fill: '#fff' });
+
+        // (수정) 우측 UI 프레임
         this.add.graphics().fillStyle(0x444444).fillRect(580, 0, 220, 576);
         
-        this.dayText = this.add.text(600, 10, 'Day: 1', { fontSize: '16px', fill: '#fff' });
-        
-        // (요청 3) UI에 영웅 HP 바 추가
-        this.heroHpText = this.add.text(600, 30, 'HP: 100/100', { fontSize: '14px', fill: '#fff' });
+        // (신규) 영웅의 현재/최대 체력과 스태미너 Placeholder
+        this.heroHpText = this.add.text(600, 50, 'HP: 100/100', { fontSize: '14px', fill: '#fff' });
         this.heroHpBar = this.add.graphics();
+        this.add.text(600, 70, 'STA: 100/100', { fontSize: '14px', fill: '#fff', color: '#00ffff' }); // 스태미너 임시
+
+        // (요청 5) 장비 슬롯 라벨 + 위치 재조정
+        this.add.text(620, 100, 'helmet', this.labelStyle);
+        this.equipSlots['helmet'] = this.createSlot(620, 115, 'helmet');
         
-        // (요청 5) 장비 슬롯 라벨 추가
-        this.add.text(620, 50, 'helmet', this.labelStyle);
-        this.equipSlots['helmet'] = this.createSlot(620, 65, 'helmet');
+        this.add.text(620, 160, 'armor', this.labelStyle);
+        this.equipSlots['armor']  = this.createSlot(620, 175, 'armor');
         
-        this.add.text(620, 100, 'armor', this.labelStyle);
-        this.equipSlots['armor']  = this.createSlot(620, 115, 'armor');
+        this.add.text(670, 160, 'weapon', this.labelStyle);
+        this.equipSlots['weapon'] = this.createSlot(670, 175, 'weapon');
         
-        this.add.text(670, 100, 'weapon', this.labelStyle);
-        this.equipSlots['weapon'] = this.createSlot(670, 115, 'weapon');
+        this.add.text(720, 160, 'shield', this.labelStyle);
+        this.equipSlots['shield'] = this.createSlot(720, 175, 'shield');
         
-        this.add.text(720, 100, 'shield', this.labelStyle);
-        this.equipSlots['shield'] = this.createSlot(720, 115, 'shield');
+        this.add.text(620, 220, 'gloves', this.labelStyle);
+        this.equipSlots['gloves'] = this.createSlot(620, 235, 'gloves');
         
-        this.add.text(620, 150, 'gloves', this.labelStyle);
-        this.equipSlots['gloves'] = this.createSlot(620, 165, 'gloves');
+        this.add.text(670, 220, 'belt', this.labelStyle);
+        this.equipSlots['belt']   = this.createSlot(670, 235, 'belt');
         
-        this.add.text(670, 150, 'belt', this.labelStyle);
-        this.equipSlots['belt']   = this.createSlot(670, 165, 'belt');
-        
-        this.add.text(720, 150, 'boots', this.labelStyle);
-        this.equipSlots['boots']  = this.createSlot(720, 165, 'boots');
+        this.add.text(720, 220, 'boots', this.labelStyle);
+        this.equipSlots['boots']  = this.createSlot(720, 235, 'boots');
+
+        // (신규) 영웅 능력치 Placeholder
+        this.add.text(600, 290, '능력치', { fontSize: '16px', fill: '#fff' });
+        this.add.text(600, 310, '피해: +X', { fontSize: '12px', fill: '#fff' });
+        this.add.text(600, 325, '방어: +Y', { fontSize: '12px', fill: '#fff' });
+        // ... 기타 능력치
         
         // (요청 6) 인벤토리 라벨 추가
-        this.add.text(585, 230, 'Inventory', { fontSize: '16px', fill: '#fff' });
+        this.add.text(585, 360, 'Inventory', this.inventoryLabelStyle); // 라벨 위치 조정
 
         this.inventory = new Array(15).fill(null);
         let k = 0;
         for (let y = 0; y < 5; y++) {
             for (let x = 0; x < 3; x++) {
                 const slotX = 620 + x * 50;
-                const slotY = 250 + y * 50;
+                const slotY = 390 + y * 50; // 인벤토리 슬롯 시작 Y 위치 조정
                 this.inventorySlots.push(this.createSlot(slotX, slotY, k++));
             }
         }
@@ -382,32 +411,28 @@ class UIScene extends Phaser.Scene {
         this.selectedHighlight = this.add.graphics().lineStyle(2, 0xcc99ff); 
         this.selectedHighlight.visible = false;
         
-        this.errorText = this.add.text(680, 520, '', { fontSize: '12px', fill: '#ff0000' }).setOrigin(0.5);
+        this.errorText = this.add.text(680, 550, '', { fontSize: '12px', fill: '#ff0000' }).setOrigin(0.5); // 에러 메시지 위치 조정
 
-        // 이벤트 리스너 등록
         this.scene.get('GameScene').events.on('updateDay', (day) => {
             this.dayText.setText(`Day: ${day}`);
         }, this);
         this.scene.get('GameScene').events.on('updateHeroHP', this.updateHeroHP, this);
         this.events.on('addItem', this.addItem, this);
         
-        this.updateHeroHP(100, 100); // 초기 HP 바 그리기
+        this.updateHeroHP(100, 100); 
     }
     
-    // (신규) UI의 HP 바 업데이트 함수
     updateHeroHP(hp, maxHp) {
-        if (!this.scene.isActive()) return; // 씬이 활성화 상태가 아닐 때(전투중)는 그리지 않음
-        
+        if (!this.scene.isActive()) return;
         this.heroHpText.setText(`HP: ${hp}/${maxHp}`);
         this.heroHpBar.clear();
         const width = 180;
         const height = 8;
         const percent = Math.max(0, hp / maxHp);
-        
         this.heroHpBar.fillStyle(0xff0000);
-        this.heroHpBar.fillRect(600, 45, width, height);
+        this.heroHpBar.fillRect(600, 65, width, height); // HP 바 위치 조정
         this.heroHpBar.fillStyle(0x00ff00);
-        this.heroHpBar.fillRect(600, 45, width * percent, height);
+        this.heroHpBar.fillRect(600, 65, width * percent, height);
     }
     
     createSlot(x, y, key) {
@@ -489,19 +514,17 @@ class UIScene extends Phaser.Scene {
 // --- Phaser 게임 설정 ---
 const config = {
     type: Phaser.AUTO,
-    // (요청 4) 논리적 크기는 800x576 유지
     width: 800,
     height: 576,
     physics: {
         default: 'arcade',
         arcade: { debug: false }
     },
-    // (요청 4) 스케일 모드를 사용하여 캔버스 크기만 1.5배 (1200x864)로 확대
     scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
-        width: 1200,
-        height: 864
+        width: 1200, // 실제 캔버스 넓이
+        height: 864  // 실제 캔버스 높이
     },
     scene: [GameScene, CombatScene, UIScene]
 };
