@@ -1,4 +1,4 @@
-// game.js (v6.3 - 맵 중앙 정렬 및 Resize 핸들러 적용)
+// game.js (v6.4 - 로딩 지연 및 영웅 시작 위치 수정)
 
 // --- 데이터 정의 --- (동일)
 const ItemData = {
@@ -32,9 +32,8 @@ class GameScene extends Phaser.Scene {
         
         this.MAP_OFFSET_X = 0; 
         this.MAP_OFFSET_Y = 0;
-        
-        // [신규] 그리기 객체들을 관리할 그룹
         this.mapGraphics = null;
+        this.hero = null; // [수정] 영웅을 null로 초기화
     }
 
     preload() {
@@ -56,40 +55,37 @@ class GameScene extends Phaser.Scene {
         this.tilesMovedTotal = 0;
         this.enemyTriggers = this.physics.add.group();
         
-        // [신규] 맵 그래픽 그룹 생성
         this.mapGraphics = this.add.group();
 
-        this.generateRandomLoop(); // 맵 경로는 미리 한 번만 생성
+        this.generateRandomLoop(); // 맵 경로 데이터만 생성
         
-        // [수정] ★★★ 맵 그리기 및 위치 계산을 redraw 함수로 분리 ★★★
-        this.redraw();
+        // [수정] ★★★ create에서 redraw를 호출하지 않음 ★★★
+        // this.redraw(); 
         
-        // [수정] ★★★ 화면 크기가 변경될 때마다 redraw 함수 호출 ★★★
+        // [수정] ★★★ resize 이벤트가 발생하면(게임 시작 시 1회 즉시 발생) redraw를 호출 ★★★
         this.scale.on('resize', this.redraw, this);
 
-        const startPos = this.pathCoords[0];
-        this.hero = this.physics.add.sprite(startPos.x, startPos.y, 'pixel').setDisplaySize(16, 24).setTint(0x00ffff);
+        this.events.on('combatComplete', this.onCombatComplete, this);
         
-        this.hero.hp = 100;
-        this.hero.maxHp = 100;
+        // [수정] 영웅 HP 데이터만 준비 (생성은 redraw에서)
+        this.heroData = {
+            hp: 100,
+            maxHp: 100
+        };
         
         this.time.delayedCall(100, () => { 
              if (this.scene.isActive('UIScene')) {
-                this.scene.get('UIScene').events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp);
+                this.scene.get('UIScene').events.emit('updateHeroHP', this.heroData.hp, this.heroData.maxHp);
              }
         });
-
-        this.physics.add.overlap(this.hero, this.enemyTriggers, this.onMeetEnemy, null, this);
-        this.events.on('combatComplete', this.onCombatComplete, this);
     }
     
-    // [신규] ★★★ 맵을 다시 그리는 함수 ★★★
-    redraw() {
+    redraw(gameSize) { // [수정] resize 이벤트가 gameSize를 전달
         // 1. 기존 맵 그래픽 모두 삭제
         this.mapGraphics.clear(true, true);
         
         // 2. 맵 위치 동적 계산
-        this.calculateMapOffsets();
+        this.calculateMapOffsets(gameSize);
         
         // 3. 맵 새로 그리기
         this.drawTiles();
@@ -97,16 +93,30 @@ class GameScene extends Phaser.Scene {
         // 4. 경로 좌표 업데이트 (영웅이 따라갈 경로)
         this.updatePathCoords();
         
-        // 5. 영웅 위치 업데이트 (맵이 이동했으므로)
-        if (this.hero) {
-            const currentPathPos = this.pathCoords[this.pathIndex];
-            this.hero.setPosition(currentPathPos.x, currentPathPos.y);
+        // 5. [수정] ★★★ 영웅 생성 또는 위치 업데이트 ★★★
+        if (!this.hero) {
+            // (요청 2) 영웅이 없으면(첫 실행) 출발점에 생성
+            const startPos = this.pathCoordsWithOffset[0];
+            this.hero = this.physics.add.sprite(startPos.x, startPos.y, 'pixel').setDisplaySize(16, 24).setTint(0x00ffff);
+            
+            // 영웅 속성 설정
+            this.hero.hp = this.heroData.hp;
+            this.hero.maxHp = this.heroData.maxHp;
+            
+            // 물리 충돌 이벤트 연결
+            this.physics.add.overlap(this.hero, this.enemyTriggers, this.onMeetEnemy, null, this);
+        } else {
+            // 영웅이 이미 있으면(창 크기 조절 시) 현재 경로 인덱스에 맞게 위치만 이동
+            const currentPos = this.pathCoordsWithOffset[this.pathIndex];
+            this.hero.setPosition(currentPos.x, currentPos.y);
+            this.hero.body.reset(currentPos.x, currentPos.y); // 물리 몸체도 리셋
         }
     }
 
-    calculateMapOffsets() {
-        const gameWidth = this.cameras.main.width;
-        const gameHeight = this.cameras.main.height;
+    calculateMapOffsets(gameSize) {
+        // [수정] gameSize가 없으면(초기 호출 방지) 카메라에서 가져옴
+        const gameWidth = gameSize ? gameSize.width : this.cameras.main.width;
+        const gameHeight = gameSize ? gameSize.height : this.cameras.main.height;
         
         const mapPixelWidth = this.GRID_WIDTH * this.TILE_SIZE;
         const mapPixelHeight = this.GRID_HEIGHT * this.TILE_SIZE;
@@ -119,7 +129,7 @@ class GameScene extends Phaser.Scene {
     }
 
     update(time, delta) {
-        if (!this.hero || !this.hero.active) return; // 영웅이 없으면 중단
+        if (!this.hero || !this.hero.active) return;
         this.moveHero();
     }
 
@@ -132,7 +142,6 @@ class GameScene extends Phaser.Scene {
         const startY = Phaser.Math.Between(1, this.GRID_HEIGHT - maxSize - 1);
         this.startGridPos = { x: startX, y: startY };
         
-        // [수정] 이 함수는 이제 오프셋을 더하지 않고, 순수 그리드 좌표만 저장
         this.pathCoords = [];
         for (let x = startX; x <= startX + loopWidth; x++) { this.grid[startY][x] = 1; this.pathCoords.push(new Phaser.Math.Vector2(x * this.TILE_SIZE + 16, startY * this.TILE_SIZE + 16)); }
         for (let y = startY + 1; y <= startY + loopHeight; y++) { this.grid[y][startX + loopWidth] = 1; this.pathCoords.push(new Phaser.Math.Vector2((startX + loopWidth) * this.TILE_SIZE + 16, y * this.TILE_SIZE + 16)); }
@@ -140,7 +149,6 @@ class GameScene extends Phaser.Scene {
         for (let y = startY + loopHeight - 1; y > startY; y--) { this.grid[y][startX] = 1; this.pathCoords.push(new Phaser.Math.Vector2(startX * this.TILE_SIZE + 16, y * this.TILE_SIZE + 16)); }
     }
     
-    // [신규] 맵 오프셋이 변경될 때 경로 좌표를 업데이트하는 함수
     updatePathCoords() {
         this.pathCoordsWithOffset = this.pathCoords.map(coord => {
             return new Phaser.Math.Vector2(
@@ -151,7 +159,6 @@ class GameScene extends Phaser.Scene {
     }
 
     drawTiles() {
-        // [수정] Graphics 객체를 생성하여 그룹에 추가
         const bgGraphics = this.add.graphics();
         this.mapGraphics.add(bgGraphics);
         
@@ -172,7 +179,7 @@ class GameScene extends Phaser.Scene {
                 const tileY = y * this.TILE_SIZE + this.MAP_OFFSET_Y;
                 
                 const tileGraphics = this.add.graphics();
-                this.mapGraphics.add(tileGraphics); // 타일 그래픽도 그룹에 추가
+                this.mapGraphics.add(tileGraphics); 
                 
                 tileGraphics.fillStyle(0x555555)
                     .fillRect(tileX, tileY, this.TILE_SIZE, this.TILE_SIZE)
@@ -183,7 +190,8 @@ class GameScene extends Phaser.Scene {
     }
 
     moveHero() {
-        // [수정] 오프셋이 적용된 경로 사용
+        if (!this.pathCoordsWithOffset || this.pathCoordsWithOffset.length === 0) return; // 경로가 아직 없으면 이동 안 함
+
         const targetPos = this.pathCoordsWithOffset[this.pathIndex];
         const distance = Phaser.Math.Distance.Between(this.hero.x, this.hero.y, targetPos.x, targetPos.y);
 
@@ -204,6 +212,8 @@ class GameScene extends Phaser.Scene {
     }
 
     checkSpawns() {
+        if (!this.pathCoordsWithOffset || this.pathCoordsWithOffset.length === 0) return;
+        
         if (this.tilesMovedTotal % 3 === 0) this.spawnEnemyTrigger(ALL_ENEMY_KEYS[0]);
         if (this.tilesMovedTotal % 4 === 0) this.spawnEnemyTrigger(ALL_ENEMY_KEYS[1]);
         if (this.tilesMovedTotal % 5 === 0) this.spawnEnemyTrigger(ALL_ENEMY_KEYS[2]);
@@ -211,7 +221,6 @@ class GameScene extends Phaser.Scene {
     }
 
     spawnEnemyTrigger(enemyKey) {
-        // [수정] 오프셋이 적용된 경로에서 랜덤 위치 선정
         const randomPathTile = Phaser.Math.RND.pick(this.pathCoordsWithOffset);
         const enemy = this.enemyTriggers.create(randomPathTile.x, randomPathTile.y, 'pixel')
             .setDisplaySize(16, 16)
@@ -407,7 +416,7 @@ class CombatScene extends Phaser.Scene {
         this.combatRunning = false;
         this.scene.get('GameScene').events.emit('combatComplete', { 
             loot: loot, 
-            heroHp: this.heroHp 
+            heroHp: this.hero.hp 
         });
         this.scene.stop();
     }
@@ -425,7 +434,7 @@ class CombatScene extends Phaser.Scene {
     }
 }
 
-// --- 3. UI 씬 --- (Resize 핸들러 적용)
+// --- 3. UI 씬 --- (v6.3과 동일 - Resize 핸들러 적용)
 class UIScene extends Phaser.Scene {
     constructor() {
         super('UIScene');
@@ -441,18 +450,17 @@ class UIScene extends Phaser.Scene {
         this.inventoryLabelStyle = { fontSize: '14px', fill: '#cccccc', align: 'left' };
         this.hpStaTextStyle = { fontSize: '12px', fill: '#ffffff' };
         
-        // [신규] UI 요소들을 담을 그룹
         this.uiElements = null;
     }
     
     create() {
-        // [신규] UI 그룹 생성
         this.uiElements = this.add.group();
+        this.itemIcons = this.add.group(); // [수정] 아이템 아이콘 그룹도 미리 생성
+
+        // [수정] ★★★ create에서 redraw를 호출하지 않음 ★★★
+        // this.redraw();
         
-        // [수정] ★★★ UI 그리기 및 위치 계산을 redraw 함수로 분리 ★★★
-        this.redraw();
-        
-        // [수정] ★★★ 화면 크기가 변경될 때마다 redraw 함수 호출 ★★★
+        // [수정] ★★★ resize 이벤트가 발생하면(게임 시작 시 1회 즉시 발생) redraw를 호출 ★★★
         this.scale.on('resize', this.redraw, this);
 
         // 이벤트 리스너 (한 번만 등록)
@@ -463,16 +471,15 @@ class UIScene extends Phaser.Scene {
         this.events.on('addItem', this.addItem, this);
     }
     
-    // [신규] ★★★ UI를 다시 그리는 함수 ★★★
-    redraw() {
-        // 1. 기존 UI 요소 모두 삭제
+    redraw(gameSize) {
+        // 1. 기존 UI 요소 모두 삭제 (아이템 아이콘 제외)
         this.uiElements.clear(true, true);
         this.inventorySlots = [];
         this.equipSlots = {};
         
         // 2. 화면 크기 및 UI 시작 위치 다시 계산
-        const gameWidth = this.cameras.main.width;
-        const gameHeight = this.cameras.main.height;
+        const gameWidth = gameSize ? gameSize.width : this.cameras.main.width;
+        const gameHeight = gameSize ? gameSize.height : this.cameras.main.height;
         this.UI_START_X = gameWidth - this.UI_WIDTH;
 
         // --- 상단 UI 프레임 ---
@@ -550,7 +557,7 @@ class UIScene extends Phaser.Scene {
         const INV_SLOT_SIZE = 36;
         const INV_SLOT_GAP = 5;
 
-        // this.inventory는 유지
+        // this.inventory 데이터는 유지됨
         let slotIndex = 0;
         for (let y = 0; y < 4; y++) {
             for (let x = 0; x < 4; x++) {
@@ -567,12 +574,17 @@ class UIScene extends Phaser.Scene {
         this.uiElements.addMultiple([this.selectedHighlight, this.errorText]);
         
         // HP/아이템 즉시 업데이트
-        this.updateHeroHP(this.scene.get('GameScene').hero.hp, this.scene.get('GameScene').hero.maxHp);
+        const gameScene = this.scene.get('GameScene');
+        if (gameScene.hero) { // GameScene의 영웅이 생성되었는지 확인
+            this.updateHeroHP(gameScene.hero.hp, gameScene.hero.maxHp);
+        } else {
+            this.updateHeroHP(gameScene.heroData.hp, gameScene.heroData.maxHp); // 임시 데이터로
+        }
         this.refreshInventory();
     }
     
     updateHeroHP(hp, maxHp) {
-        if (!this.scene.isActive() || !this.heroHpText) return; // 씬이 활성화 상태이고, HP텍스트가 그려진 후
+        if (!this.scene.isActive() || !this.heroHpText) return;
         this.heroHpText.setText(`HP: ${hp}/${maxHp}`);
         const percent = Math.max(0, hp / maxHp);
         this.heroHpBarFill.width = this.hpBarWidth * percent;
@@ -588,7 +600,7 @@ class UIScene extends Phaser.Scene {
         slot.setInteractive();
         slot.on('pointerdown', () => this.onSlotClick(slot));
         
-        this.uiElements.add(slot); // [신규] 생성된 슬롯을 UI 그룹에 추가
+        this.uiElements.add(slot);
         return slot;
     }
     
@@ -629,14 +641,12 @@ class UIScene extends Phaser.Scene {
     }
     
     refreshInventory() {
-        // [수정] 아이템 아이콘은 UI 그룹이 아닌 별도 그룹으로 관리 (계속 지워야 하므로)
-        if(this.itemIcons) this.itemIcons.destroy(true);
-        this.itemIcons = this.add.group();
+        this.itemIcons.clear(true, true); // [수정] 기존 아이콘 삭제
 
         this.inventory.forEach((itemKey, index) => {
             if (itemKey) {
                 const slot = this.inventorySlots[index];
-                if (slot) { // 슬롯이 redraw 되었는지 확인
+                if (slot) { 
                     const itemIcon = this.add.rectangle(slot.x + slot.width/2, slot.y + slot.height/2, slot.width * 0.8, slot.height * 0.8, ItemData[itemKey].color);
                     this.itemIcons.add(itemIcon);
                 }
@@ -644,7 +654,7 @@ class UIScene extends Phaser.Scene {
         });
         Object.keys(this.equipSlots).forEach(slotKey => {
             const slot = this.equipSlots[slotKey];
-            if (slot && slot.getData('item')) { // 슬롯이 redraw 되었는지 확인
+            if (slot && slot.getData('item')) { 
                 const itemKey = slot.getData('item');
                 const itemIcon = this.add.rectangle(slot.x + slot.width/2, slot.y + slot.height/2, slot.width * 0.8, slot.height * 0.8, ItemData[itemKey].color);
                 this.itemIcons.add(itemIcon);
