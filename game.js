@@ -356,7 +356,6 @@ class GameScene extends Phaser.Scene {
         }
         
         console.log("Generated loop length:", this.pathCoords.length);
-        // console.log("Grid dimensions:", this.grid.length, this.grid[0]?.length); // 디버깅용
         console.log("Special Tiles:", this.specialTileCoords);
     }
     
@@ -452,7 +451,6 @@ class GameScene extends Phaser.Scene {
         if(this.pathIndex < 0 || this.pathIndex >= this.pathCoordsWithOffset.length) {
             console.error("Invalid pathIndex:", this.pathIndex, "Resetting to 0.");
             this.pathIndex = 0;
-            // 추가 검사: 경로 자체가 비었는지
              if (this.pathCoordsWithOffset.length === 0) return;
         }
 
@@ -487,7 +485,7 @@ class GameScene extends Phaser.Scene {
         console.log(`Day ${this.day} started`);
         
         const uiScene = this.scene.get('UIScene');
-        if(uiScene && uiScene.events && this.scene.isActive('UIScene')) { // 활성 상태 확인 추가
+        if(uiScene && uiScene.events && this.scene.isActive('UIScene')) { 
              uiScene.events.emit('updateDay', this.day);
         }
         
@@ -575,7 +573,7 @@ class GameScene extends Phaser.Scene {
     onCombatComplete(data) {
         this.scene.wake('UIScene'); 
         
-        if (!this.hero) return; // 영웅이 이미 파괴된 경우 (Game Over)
+        if (!this.hero) return; 
 
         this.hero.hp = data.heroHp;
         const uiScene = this.scene.get('UIScene');
@@ -601,7 +599,7 @@ class GameScene extends Phaser.Scene {
     }
 }
 
-// --- 2. 전투 씬 --- (v6.2와 동일)
+// --- 2. 전투 씬 --- (v7.1과 동일)
 class CombatScene extends Phaser.Scene {
     constructor() {
         super('CombatScene');
@@ -618,4 +616,474 @@ class CombatScene extends Phaser.Scene {
     }
     
     create() {
-        const gameWidth
+        const gameWidth = this.cameras.main.width;
+        const gameHeight = this.cameras.main.height;
+        
+        const combatPanelWidth = gameWidth * 0.5;
+        const combatPanelHeight = gameHeight * 0.5;
+        const combatPanelX = (gameWidth - combatPanelWidth) / 2;
+        const combatPanelY = (gameHeight - combatPanelHeight) / 2;
+        
+        this.add.graphics().fillStyle(0x000000, 0.9).fillRect(0, 0, gameWidth, gameHeight); 
+        
+        this.add.graphics()
+            .fillStyle(0x333333)
+            .fillRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight)
+            .lineStyle(2, 0x8B4513)
+            .strokeRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight);
+        
+        this.heroIllust = this.add.image(combatPanelX + combatPanelWidth * 0.3, combatPanelY + combatPanelHeight * 0.65, 'hero_illust')
+                            .setDisplaySize(120, 160).setTint(0x00ffff);
+        this.enemyIllust = this.add.image(combatPanelX + combatPanelWidth * 0.7, combatPanelY + combatPanelHeight * 0.65, this.enemyData.illustKey)
+                            .setDisplaySize(120, 160).setTint(this.enemyData.color);
+        
+        const barWidth = 100;
+        const barHeight = 10;
+        const heroHpBarX = this.heroIllust.x - 50;
+        const heroHpBarY = this.heroIllust.y - 90;
+        const enemyHpBarX = this.enemyIllust.x - 50;
+        const enemyHpBarY = this.enemyIllust.y - 90;
+        
+        this.heroHpBarBG = this.add.rectangle(heroHpBarX, heroHpBarY, barWidth, barHeight, 0xff0000).setOrigin(0);
+        this.heroHpBarFill = this.add.rectangle(heroHpBarX, heroHpBarY, barWidth, barHeight, 0x00ff00).setOrigin(0);
+        this.enemyHpBarBG = this.add.rectangle(enemyHpBarX, enemyHpBarY, barWidth, barHeight, 0xff0000).setOrigin(0);
+        this.enemyHpBarFill = this.add.rectangle(enemyHpBarX, enemyHpBarY, barWidth, barHeight, 0x00ff00).setOrigin(0);
+        
+        this.updateHpBars(); 
+        
+        this.combatRunning = true;
+        this.time.delayedCall(this.turnDelay, this.playerAttack, [], this); 
+    }
+    
+    updateHpBars() {
+        const barWidth = 100;
+        const heroPercent = Math.max(0, this.heroHp / this.heroMaxHp);
+        this.heroHpBarFill.width = barWidth * heroPercent; 
+
+        const enemyPercent = Math.max(0, this.enemyHp / this.enemyMaxHp);
+        this.enemyHpBarFill.width = barWidth * enemyPercent;
+    }
+    
+    playerAttack() {
+        if (!this.combatRunning || !this.heroIllust.active || !this.enemyIllust.active) return;
+        
+        this.add.tween({
+            targets: this.heroIllust,
+            x: this.heroIllust.x + 20,
+            duration: 100,
+            ease: 'Power1',
+            yoyo: true,
+            onComplete: () => {
+                this.enemyHp -= 10; 
+                this.updateHpBars();
+                
+                if (this.enemyHp <= 0) {
+                    this.defeatEnemy();
+                } else {
+                    this.time.delayedCall(this.turnDelay, this.enemyAttack, [], this);
+                }
+            }
+        });
+    }
+    
+    enemyAttack() {
+        if (!this.combatRunning || !this.heroIllust.active || !this.enemyIllust.active) return;
+
+        this.add.tween({
+            targets: this.enemyIllust,
+            x: this.enemyIllust.x - 20,
+            duration: 100,
+            ease: 'Power1',
+            yoyo: true,
+            onComplete: () => {
+                this.heroHp -= this.enemyData.atk;
+                this.updateHpBars();
+                
+                if (this.heroHp <= 0) {
+                    this.defeatHero();
+                } else {
+                    this.time.delayedCall(this.turnDelay, this.playerAttack, [], this);
+                }
+            }
+        });
+    }
+
+    defeatEnemy() {
+        this.combatRunning = false;
+        this.add.tween({
+            targets: this.enemyIllust,
+            alpha: 0,
+            duration: 500,
+            onComplete: () => {
+                this.enemyIllust.active = false;
+                this.enemyHpBarBG.destroy();
+                this.enemyHpBarFill.destroy();
+                
+                let loot = null;
+                if (Math.random() < this.enemyData.dropRate) {
+                    loot = Phaser.Math.RND.pick(ALL_ITEM_KEYS);
+                    this.dropItemAnimation(loot);
+                } else {
+                    this.endCombat(null);
+                }
+            }
+        });
+    }
+    
+    dropItemAnimation(itemKey) {
+        const itemData = ItemData[itemKey];
+        const itemIcon = this.add.rectangle(this.enemyIllust.x, this.enemyIllust.y, 20, 20, itemData.color);
+        
+        const inventoryCenterSlotX = this.cameras.main.width - 190 + 50; 
+        const inventoryCenterSlotY = 415;
+        this.add.tween({
+            targets: itemIcon,
+            x: inventoryCenterSlotX, 
+            y: inventoryCenterSlotY,
+            duration: 700,
+            ease: 'Back.easeIn',
+            onComplete: () => {
+                itemIcon.destroy();
+                this.endCombat(itemKey); 
+            }
+        });
+    }
+    
+    endCombat(loot) {
+        this.combatRunning = false;
+        const gameScene = this.scene.get('GameScene');
+        if (gameScene && gameScene.events) { 
+            gameScene.events.emit('combatComplete', { 
+                loot: loot, 
+                heroHp: this.heroHp 
+            });
+        } else {
+             console.warn("Cannot emit combatComplete: GameScene not found or ready.");
+        }
+        this.scene.stop();
+    }
+    
+    defeatHero() {
+        this.combatRunning = false;
+        this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2, 'YOU DIED', { fontSize: '48px', fill: '#ff0000' }).setOrigin(0.5);
+        this.heroIllust.active = false;
+        this.heroHpBarBG.destroy();
+        this.heroHpBarFill.destroy();
+        
+        this.time.delayedCall(2000, () => {
+            this.endCombat(null); 
+        }, [], this);
+    }
+}
+
+// --- 3. UI 씬 --- (v7.3과 동일 - 최종 오류 수정)
+class UIScene extends Phaser.Scene {
+    constructor() {
+        super('UIScene');
+        this.inventorySlots = [];
+        this.equipSlots = {};
+        this.inventory = new Array(16).fill(null);
+        
+        this.UI_WIDTH = 190;
+        this.UI_PADDING = 10;
+        this.TOP_UI_HEIGHT = 50;
+        
+        this.labelStyle = { fontSize: '11px', fill: '#cccccc', align: 'center' };
+        this.inventoryLabelStyle = { fontSize: '14px', fill: '#cccccc', align: 'left' };
+        this.hpStaTextStyle = { fontSize: '12px', fill: '#ffffff' };
+        
+        this.uiElements = null;
+        this.itemIcons = null;
+    }
+    
+    create() {
+        console.log("UIScene create start");
+        this.uiElements = this.add.group();
+        this.itemIcons = this.add.group();
+
+        this.scale.on('resize', this.redraw, this);
+        this.events.on('wake', this.handleWake, this);
+
+        const gameScene = this.scene.get('GameScene');
+        if (gameScene && gameScene.events) {
+            gameScene.events.on('updateDay', (day) => {
+                if (this.dayText) this.dayText.setText(`Day: ${day}`);
+            }, this);
+            gameScene.events.on('updateHeroHP', this.updateHeroHP, this);
+        } else {
+             console.warn("UIScene create: GameScene not ready for event listeners yet.");
+        }
+        this.events.on('addItem', this.addItem, this);
+        
+        console.log("UIScene calling initial redraw");
+        this.time.delayedCall(0, () => {
+             console.log("Executing delayed initial redraw for UIScene");
+            this.redraw(this.scale.gameSize);
+        }, [], this);
+        console.log("UIScene create end");
+    }
+    
+    handleWake() {
+        console.log("UIScene wake, calling redraw");
+        this.redraw(this.scale.gameSize);
+    }
+    
+    redraw(gameSize) {
+        console.log("UIScene redraw start", gameSize);
+        const gameWidth = gameSize ? gameSize.width : this.cameras.main.width;
+        const gameHeight = gameSize ? gameSize.height : this.cameras.main.height;
+        
+        if (gameWidth <= 1 || gameHeight <= 1) {
+             console.warn("UIScene redraw skipped due to invalid size:", gameWidth, gameHeight);
+            return;
+        }
+
+        this.uiElements.clear(true, true);
+        this.inventorySlots = [];
+        this.equipSlots = {};
+        
+        this.UI_START_X = gameWidth - this.UI_WIDTH;
+
+        // --- 상단 UI 프레임 ---
+        const topBar = this.add.graphics().fillStyle(0x666666).fillRect(0, 0, gameWidth, this.TOP_UI_HEIGHT);
+        this.uiElements.add(topBar);
+        
+        const text1 = this.add.text(10, 15, '시간의 흐름', { fontSize: '10px', fill: '#000000' });
+        const gameSceneRef = this.scene.get('GameScene');
+        const currentDay = (gameSceneRef && typeof gameSceneRef.day === 'number') ? gameSceneRef.day : 1;
+        this.dayText = this.add.text(80, 15, `Day: ${currentDay}`, { fontSize: '14px', fill: '#000000' });
+        const text3 = this.add.text(200, 15, '계획', { fontSize: '10px', fill: '#000000' });
+        const text4 = this.add.text(300, 15, '게임 UI 화면', { fontSize: '10px', fill: '#000000' });
+        const text5 = this.add.text(450, 15, '몇 번째 루프인지 표시', { fontSize: '10px', fill: '#000000' });
+        this.uiElements.addMultiple([text1, this.dayText, text3, text4, text5]);
+
+        // --- 우측 UI 프레임 ---
+        const rightBar = this.add.graphics().fillStyle(0x333333).fillRect(this.UI_START_X, 0, this.UI_WIDTH, gameHeight);
+        this.uiElements.add(rightBar);
+        
+        const RIGHT_UI_START_X = this.UI_START_X + this.UI_PADDING;
+        let currentY = this.TOP_UI_HEIGHT + this.UI_PADDING;
+        
+        this.heroHpText = this.add.text(RIGHT_UI_START_X, currentY, 'HP: 100/100', this.hpStaTextStyle);
+        currentY += 18;
+        
+        this.hpBarWidth = this.UI_WIDTH - (this.UI_PADDING * 2) - 20;
+        this.hpBarHeight = 8;
+        this.heroHpBarBG = this.add.rectangle(RIGHT_UI_START_X, currentY, this.hpBarWidth, this.hpBarHeight, 0xff0000).setOrigin(0);
+        this.heroHpBarFill = this.add.rectangle(RIGHT_UI_START_X, currentY, this.hpBarWidth, this.hpBarHeight, 0x00ff00).setOrigin(0);
+        
+        currentY += 15;
+        const staText = this.add.text(RIGHT_UI_START_X, currentY, 'STA: 100/100', { fontSize: '12px', fill: '#B09253' });
+        currentY += 30;
+        this.uiElements.addMultiple([this.heroHpText, this.heroHpBarBG, this.heroHpBarFill, staText]);
+
+        // --- 장비 슬롯 ---
+        const EQUIP_SLOT_SIZE = 36;
+        const EQUIP_SLOT_GAP_X = 5;
+        const EQUIP_SLOT_GAP_Y = 10;
+
+        const helmetLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'helmet', this.labelStyle);
+        this.equipSlots['helmet'] = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'helmet', EQUIP_SLOT_SIZE);
+        currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10;
+
+        const armorLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'armor', this.labelStyle);
+        this.equipSlots['armor']  = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'armor', EQUIP_SLOT_SIZE);
+        const weaponLabel = this.add.text(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY, 'weapon', this.labelStyle);
+        this.equipSlots['weapon'] = this.createSlot(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY + 15, 'weapon', EQUIP_SLOT_SIZE);
+        const shieldLabel = this.add.text(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY, 'shield', this.labelStyle);
+        this.equipSlots['shield'] = this.createSlot(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY + 15, 'shield', EQUIP_SLOT_SIZE);
+        currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10;
+
+        const glovesLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'gloves', this.labelStyle);
+        this.equipSlots['gloves'] = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'gloves', EQUIP_SLOT_SIZE);
+        const beltLabel = this.add.text(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY, 'belt', this.labelStyle);
+        this.equipSlots['belt']   = this.createSlot(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY + 15, 'belt', EQUIP_SLOT_SIZE);
+        const bootsLabel = this.add.text(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY, 'boots', this.labelStyle);
+        this.equipSlots['boots']  = this.createSlot(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY + 15, 'boots', EQUIP_SLOT_SIZE);
+        currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10;
+        
+        this.uiElements.addMultiple([helmetLabel, armorLabel, weaponLabel, shieldLabel, glovesLabel, beltLabel, bootsLabel]);
+        
+        // --- 능력치 ---
+        const statsLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '능력치', this.inventoryLabelStyle);
+        currentY += 20;
+        const damageLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '피해: +X', this.hpStaTextStyle);
+        currentY += 15;
+        const defenseLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '방어: +Y', this.hpStaTextStyle);
+        currentY += 25;
+        this.uiElements.addMultiple([statsLabel, damageLabel, defenseLabel]);
+
+        // --- 인벤토리 ---
+        const invLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'Inventory', this.inventoryLabelStyle); 
+        currentY += 20;
+        this.uiElements.add(invLabel);
+
+        const INV_SLOT_SIZE = 36;
+        const INV_SLOT_GAP = 5;
+
+        let slotIndex = 0;
+        for (let y = 0; y < 4; y++) {
+            for (let x = 0; x < 4; x++) {
+                const slotX = RIGHT_UI_START_X + 5 + x * (INV_SLOT_SIZE + INV_SLOT_GAP);
+                const slotY = currentY + y * (INV_SLOT_SIZE + INV_SLOT_GAP); 
+                this.inventorySlots.push(this.createSlot(slotX, slotY, slotIndex++, INV_SLOT_SIZE));
+            }
+        }
+        
+        this.selectedHighlight = this.add.graphics().lineStyle(2, 0xcc99ff); 
+        this.selectedHighlight.visible = false;
+        
+        this.errorText = this.add.text(this.UI_START_X + this.UI_WIDTH / 2, gameHeight - 30, '', { fontSize: '10px', fill: '#ff0000' }).setOrigin(0.5); 
+        this.uiElements.addMultiple([this.selectedHighlight, this.errorText]);
+        
+        let initialHp = 100, initialMaxHp = 100;
+        if (gameSceneRef && gameSceneRef.heroData) { 
+            initialHp = gameSceneRef.heroData.hp;
+            initialMaxHp = gameSceneRef.heroData.maxHp;
+        } 
+        if (gameSceneRef && gameSceneRef.hero) { 
+             initialHp = gameSceneRef.hero.hp;
+             initialMaxHp = gameSceneRef.hero.maxHp;
+        } 
+        this.updateHeroHP(initialHp, initialMaxHp);
+        this.refreshInventory();
+        console.log("UIScene redraw end");
+    }
+    
+    updateHeroHP(hp, maxHp) {
+        if (!this.scene.isActive() || !this.heroHpText || !this.heroHpBarFill) return;
+        this.heroHpText.setText(`HP: ${hp}/${maxHp}`);
+        const percent = Math.max(0, hp / maxHp);
+        if (typeof this.hpBarWidth === 'number') {
+            this.heroHpBarFill.width = this.hpBarWidth * percent;
+        } else {
+             console.warn("hpBarWidth is not defined in updateHeroHP");
+        }
+    }
+    
+    createSlot(x, y, key, size = 40) {
+        const slot = this.add.rectangle(x, y, size, size)
+            .setOrigin(0)
+            .setFillStyle(0x333333) 
+            .setStrokeStyle(1, 0x666666);
+            
+        slot.setData('slotKey', key);
+        slot.setInteractive();
+        slot.on('pointerdown', () => this.onSlotClick(slot));
+        
+        this.uiElements.add(slot);
+        return slot;
+    }
+    
+    onSlotClick(slot) {
+        const slotKey = slot.getData('slotKey');
+        if (this.selectedItemIndex !== null) {
+            const itemKey = this.inventory[this.selectedItemIndex];
+            if (!itemKey) { 
+                 this.clearSelection();
+                 return;
+            }
+            const itemType = ItemData[itemKey].type;
+            if (this.equipSlots[slotKey]) {
+                if (slotKey === itemType) {
+                    this.equipItem(itemKey, slotKey);
+                    this.inventory[this.selectedItemIndex] = null; 
+                    this.clearSelection();
+                    this.refreshInventory();
+                } else {
+                    this.showError('해당 아이템을 장착할 수 없는 위치입니다.');
+                }
+            } else { this.clearSelection(); }
+        } else {
+            if (typeof slotKey === 'number' && slotKey < this.inventory.length && this.inventory[slotKey]) { 
+                this.selectedItemIndex = slotKey;
+                this.selectedHighlight.visible = true;
+                if (this.selectedHighlight) {
+                     this.selectedHighlight.clear().lineStyle(2, 0xcc99ff).strokeRect(slot.x, slot.y, slot.width, slot.height);
+                }
+            }
+        }
+    }
+    
+    addItem(itemKey) {
+        const emptySlotIndex = this.inventory.indexOf(null);
+        if (emptySlotIndex !== -1) {
+            this.inventory[emptySlotIndex] = itemKey;
+            this.refreshInventory();
+        } else { this.showError('인벤토리가 가득 찼습니다!'); }
+    }
+    
+    refreshInventory() {
+        if (!this.itemIcons) {
+             console.warn("Item icon group not ready in refreshInventory");
+             return;
+        }
+        this.itemIcons.clear(true, true);
+
+        this.inventory.forEach((itemKey, index) => {
+            if (itemKey) {
+                const slot = (index < this.inventorySlots.length) ? this.inventorySlots[index] : null; 
+                if (slot) { 
+                    const itemIcon = this.add.rectangle(slot.x + slot.width/2, slot.y + slot.height/2, slot.width * 0.8, slot.height * 0.8, ItemData[itemKey].color);
+                    this.itemIcons.add(itemIcon);
+                } else {
+                    // console.warn(`Inventory slot at index ${index} not found during refresh.`);
+                }
+            }
+        });
+        Object.keys(this.equipSlots).forEach(slotKey => {
+            const slot = this.equipSlots[slotKey];
+            if (slot && typeof slot.getData === 'function' && slot.getData('item')) { 
+                const itemKey = slot.getData('item');
+                const itemIcon = this.add.rectangle(slot.x + slot.width/2, slot.y + slot.height/2, slot.width * 0.8, slot.height * 0.8, ItemData[itemKey].color);
+                this.itemIcons.add(itemIcon);
+            }
+        });
+    }
+    
+    equipItem(itemKey, slotKey) {
+        const slot = this.equipSlots[slotKey];
+        if (slot && typeof slot.setData === 'function') {
+             slot.setData('item', itemKey);
+        } else {
+             console.error(`Equip slot ${slotKey} not found or invalid.`);
+        }
+    }
+    
+    clearSelection() {
+        this.selectedItemIndex = null;
+        if (this.selectedHighlight) {
+             this.selectedHighlight.visible = false;
+        }
+    }
+    
+    // [수정] ★★★ showError 함수의 닫는 중괄호 } 를 추가 ★★★
+    showError(message) {
+        if (this.errorText) {
+            this.errorText.setText(message);
+            if (this.scene.isActive()) {
+                this.time.delayedCall(2000, () => {
+                    if(this.errorText) this.errorText.setText('');
+                });
+            }
+        }
+    } 
+} // End of UIScene class
+
+// --- Phaser 게임 설정 --- (v6.2와 동일)
+const config = {
+    type: Phaser.AUTO,
+    width: '100%',
+    height: '100%',
+    physics: {
+        default: 'arcade',
+        arcade: { debug: false }
+    },
+    scale: {
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.NO_CENTER 
+    },
+    scene: [GameScene, CombatScene, UIScene]
+};
+
+const game = new Phaser.Game(config);
