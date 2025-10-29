@@ -1,4 +1,4 @@
-// game.js (v6.6 - 검은 화면 최종 수정 및 redraw 로직 변경)
+// game.js (v6.7 - 전투 중 Resize 반영)
 
 // --- 데이터 정의 --- (동일)
 const ItemData = {
@@ -60,7 +60,9 @@ class GameScene extends Phaser.Scene {
 
         this.generateRandomLoop();
         
+        // resize 이벤트 핸들러: 화면 크기가 변경될 때 redraw 호출
         this.scale.on('resize', this.redraw, this);
+        
         this.events.on('combatComplete', this.onCombatComplete, this);
         
         this.heroData = { hp: 100, maxHp: 100 };
@@ -71,7 +73,7 @@ class GameScene extends Phaser.Scene {
              }
         });
 
-        // [수정] ★★★ create 마지막에 redraw를 1회 호출 ★★★
+        // create 마지막에 redraw를 1회 호출하여 초기 화면 그리기
         console.log("GameScene calling initial redraw");
         this.redraw(this.scale.gameSize); 
         console.log("GameScene create end");
@@ -79,10 +81,16 @@ class GameScene extends Phaser.Scene {
     
     redraw(gameSize) {
         console.log("GameScene redraw start", gameSize);
-        // [수정] ★★★ gameSize 없으면 카메라 크기 사용 (안전 코드) ★★★
+        // gameSize 없으면 카메라 크기 사용 (안전 코드)
         const gameWidth = gameSize ? gameSize.width : this.cameras.main.width;
         const gameHeight = gameSize ? gameSize.height : this.cameras.main.height;
         
+        // 화면 크기가 유효하지 않으면 중단 (매우 작은 크기 등)
+        if (gameWidth <= 1 || gameHeight <= 1) {
+             console.warn("GameScene redraw skipped due to invalid size:", gameWidth, gameHeight);
+            return;
+        }
+
         this.mapGraphics.clear(true, true);
         
         this.calculateMapOffsets(gameWidth, gameHeight);
@@ -123,13 +131,11 @@ class GameScene extends Phaser.Scene {
         const gameplayAreaHeight = gameHeight - this.TOP_UI_HEIGHT;
         
         this.MAP_OFFSET_X = (gameplayAreaWidth / 2) - (mapPixelWidth / 2);
-        this.MAP_OFFSET_Y = this.TOP_UI_HEIGHT + (gameplayAreaHeight / 2) - (mapPixelHeight / 2);
+        // 맵이 너무 위로 붙지 않도록 최소 Y 오프셋 보장
+        this.MAP_OFFSET_Y = Math.max(this.TOP_UI_HEIGHT + 20, this.TOP_UI_HEIGHT + (gameplayAreaHeight / 2) - (mapPixelHeight / 2));
     }
 
     update(time, delta) {
-        // [수정] update에서 redraw 호출 제거
-        // if (!this.initialRedrawDone && ...) 
-
         if (!this.hero || !this.hero.active) return;
         this.moveHero();
     }
@@ -194,7 +200,6 @@ class GameScene extends Phaser.Scene {
         if (!this.hero || !this.hero.body || !this.pathCoordsWithOffset || this.pathCoordsWithOffset.length === 0) return;
 
         const targetPos = this.pathCoordsWithOffset[this.pathIndex];
-        // 경로 유효성 검사 추가
         if (!targetPos || typeof targetPos.x !== 'number' || typeof targetPos.y !== 'number') {
             console.error("Invalid target position:", targetPos, "at index:", this.pathIndex);
             return;
@@ -270,16 +275,12 @@ class GameScene extends Phaser.Scene {
             this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2, 'GAME OVER', { fontSize: '40px', fill: '#ff0000' }).setOrigin(0.5);
         } else {
             this.scene.resume();
-             const currentPos = this.pathCoordsWithOffset[this.pathIndex];
-              if (!currentPos) {
-                  console.error("Cannot reset hero position after combat, position invalid!");
-                  return;
-              }
-             this.hero.setPosition(currentPos.x, currentPos.y);
-             if (!this.hero.body) {
-                this.physics.world.enable(this.hero);
-             }
-             this.hero.body.reset(currentPos.x, currentPos.y); 
+            
+            // [수정] ★★★ 전투 후 씬 재개 시 redraw를 호출하여 최신 크기 반영 ★★★
+            console.log("GameScene calling redraw after combat");
+            this.redraw(this.scale.gameSize); 
+
+            // 전투 후 영웅 위치 및 물리 상태 복구 (redraw에서 처리)
         }
     }
 }
@@ -456,7 +457,7 @@ class CombatScene extends Phaser.Scene {
     }
 }
 
-// --- 3. UI 씬 --- (v6.3과 동일 - redraw 수정)
+// --- 3. UI 씬 --- (redraw 로직 수정)
 class UIScene extends Phaser.Scene {
     constructor() {
         super('UIScene');
@@ -481,8 +482,13 @@ class UIScene extends Phaser.Scene {
         this.uiElements = this.add.group();
         this.itemIcons = this.add.group();
 
+        // resize 이벤트 핸들러 설정
         this.scale.on('resize', this.redraw, this);
 
+        // [수정] ★★★ wake 이벤트 리스너 추가 ★★★
+        this.events.on('wake', this.handleWake, this);
+
+        // 이벤트 리스너 (GameScene)
         this.scene.get('GameScene').events.on('updateDay', (day) => {
             if (this.dayText) this.dayText.setText(`Day: ${day}`);
         }, this);
@@ -495,8 +501,11 @@ class UIScene extends Phaser.Scene {
         console.log("UIScene create end");
     }
     
-    // [수정] update 함수 제거
-    // update() { ... }
+    // [신규] ★★★ 씬이 깨어날 때(전투 종료 시) redraw 호출 ★★★
+    handleWake() {
+        console.log("UIScene wake, calling redraw");
+        this.redraw(this.scale.gameSize);
+    }
     
     redraw(gameSize) {
         console.log("UIScene redraw start", gameSize);
@@ -504,6 +513,12 @@ class UIScene extends Phaser.Scene {
         const gameWidth = gameSize ? gameSize.width : this.cameras.main.width;
         const gameHeight = gameSize ? gameSize.height : this.cameras.main.height;
         
+        // 화면 크기가 유효하지 않으면 중단
+        if (gameWidth <= 1 || gameHeight <= 1) {
+             console.warn("UIScene redraw skipped due to invalid size:", gameWidth, gameHeight);
+            return;
+        }
+
         this.uiElements.clear(true, true);
         this.inventorySlots = [];
         this.equipSlots = {};
@@ -516,7 +531,8 @@ class UIScene extends Phaser.Scene {
         
         const text1 = this.add.text(10, 15, '시간의 흐름', { fontSize: '10px', fill: '#000000' });
         // dayText는 redraw될 때마다 새로 생성됨
-        this.dayText = this.add.text(80, 15, `Day: ${this.scene.get('GameScene').day || 1}`, { fontSize: '14px', fill: '#000000' });
+        const gameSceneRef = this.scene.get('GameScene'); // GameScene 참조 가져오기
+        this.dayText = this.add.text(80, 15, `Day: ${gameSceneRef.day || 1}`, { fontSize: '14px', fill: '#000000' });
         const text3 = this.add.text(200, 15, '계획', { fontSize: '10px', fill: '#000000' });
         const text4 = this.add.text(300, 15, '게임 UI 화면', { fontSize: '10px', fill: '#000000' });
         const text5 = this.add.text(450, 15, '몇 번째 루프인지 표시', { fontSize: '10px', fill: '#000000' });
@@ -601,23 +617,25 @@ class UIScene extends Phaser.Scene {
         this.errorText = this.add.text(this.UI_START_X + this.UI_WIDTH / 2, gameHeight - 30, '', { fontSize: '10px', fill: '#ff0000' }).setOrigin(0.5); 
         this.uiElements.addMultiple([this.selectedHighlight, this.errorText]);
         
-        // [수정] redraw 시점에 GameScene의 hero 또는 heroData 상태 확인
+        // redraw 시점에 GameScene의 hero 또는 heroData 상태 확인
         const gameScene = this.scene.get('GameScene');
         let initialHp = 100, initialMaxHp = 100;
-        if (gameScene.hero) {
+        // GameScene이 아직 생성 중일 수 있으므로 heroData 먼저 확인
+        if (gameScene.heroData) {
+             initialHp = gameScene.heroData.hp;
+             initialMaxHp = gameScene.heroData.maxHp;
+        }
+        if (gameScene.hero) { // hero가 생성되었다면 실제 값 사용
              initialHp = gameScene.hero.hp;
              initialMaxHp = gameScene.hero.maxHp;
-        } else if (gameScene.heroData) {
-            initialHp = gameScene.heroData.hp;
-            initialMaxHp = gameScene.heroData.maxHp;
-        }
+        } 
         this.updateHeroHP(initialHp, initialMaxHp);
         this.refreshInventory();
         console.log("UIScene redraw end");
     }
     
     updateHeroHP(hp, maxHp) {
-        if (!this.scene.isActive() || !this.heroHpText) return;
+        if (!this.scene.isActive() || !this.heroHpText || !this.heroHpBarFill) return; // 객체 존재 확인
         this.heroHpText.setText(`HP: ${hp}/${maxHp}`);
         const percent = Math.max(0, hp / maxHp);
         this.heroHpBarFill.width = this.hpBarWidth * percent;
@@ -706,7 +724,6 @@ class UIScene extends Phaser.Scene {
     }
     
     showError(message) {
-        // [수정] errorText가 생성되었는지 확인 후 표시
         if (this.errorText) {
             this.errorText.setText(message);
             this.time.delayedCall(2000, () => {
