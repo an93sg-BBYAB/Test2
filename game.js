@@ -1,6 +1,6 @@
-// game.js (v7.0 - 타일/루프/시간/스폰 시스템 대규모 변경)
+// game.js (v7.1 - Base Shape + Deformation 루프 생성)
 
-// --- 데이터 정의 ---
+// --- 데이터 정의 --- (동일)
 const ItemData = {
     'sword':    { name: '검', type: 'weapon', color: 0x8B4513 },
     'shield':   { name: '방패', type: 'shield', color: 0x8B4513 },
@@ -12,7 +12,6 @@ const ItemData = {
 };
 const ALL_ITEM_KEYS = Object.keys(ItemData);
 
-// [수정] 5번째 적(슬라임) 추가
 const EnemyData = {
     'goblin':   { name: '고블린', hp: 30, atk: 5, color: 0x00aa00, dropRate: 0.10, illustKey: 'goblin_illust' }, // 적 1
     'skeleton': { name: '해골',   hp: 50, atk: 3, color: 0xeeeeee, dropRate: 0.15, illustKey: 'skeleton_illust' }, // 적 2
@@ -20,9 +19,8 @@ const EnemyData = {
     'demon':    { name: '악마',   hp: 40, atk: 12, color: 0xcc0000, dropRate: 0.25, illustKey: 'demon_illust' },  // 적 4 (전투 참가용 - 현재 스폰 안됨)
     'slime':    { name: '슬라임', hp: 20, atk: 2, color: 0x00ffff, dropRate: 0.05, illustKey: 'slime_illust'}     // 적 5 (임시 illustKey)
 };
-// [수정] 스폰 로직에서 사용할 키 배열 (적4 제외)
 const SPAWNABLE_ENEMY_KEYS = ['goblin', 'skeleton', 'orc', 'slime'];
-// 타일 타입 상수 정의
+
 const TILE_TYPE_EMPTY = 0;
 const TILE_TYPE_PATH = 1;
 const TILE_TYPE_ENEMY2 = 2; // 스켈레톤 스폰 위치
@@ -33,11 +31,9 @@ const TILE_TYPE_ENEMY5 = 5; // 슬라임 스폰 위치
 class GameScene extends Phaser.Scene {
     constructor() {
         super('GameScene');
-        // [수정] 타일 크기 변경
         this.TILE_SIZE = 48; 
         this.TOP_UI_HEIGHT = 50; 
         this.RIGHT_UI_WIDTH = 190;
-        // 그리드 크기는 루프 생성 범위 제한용으로 사용
         this.GRID_WIDTH = 25; 
         this.GRID_HEIGHT = 18; 
         
@@ -45,15 +41,11 @@ class GameScene extends Phaser.Scene {
         this.MAP_OFFSET_Y = 0;
         this.mapGraphics = null;
         this.hero = null;
-        this.pathCoords = []; // 그리드 좌표 경로 (x, y)
-        this.pathCoordsWithOffset = []; // 화면 픽셀 좌표 경로 (Vector2)
-        this.grid = []; // 맵 타일 정보 저장 (타일 타입)
-        this.specialTileCoords = { // 특수 타일 좌표 저장
-            [TILE_TYPE_ENEMY2]: [],
-            [TILE_TYPE_ENEMY3]: [],
-            [TILE_TYPE_ENEMY5]: []
-        };
-        this.tilesMovedSinceLastDay = 0; // [신규] 날짜 계산용
+        this.pathCoords = []; // 그리드 좌표 경로 (x, y 객체 배열)
+        this.pathCoordsWithOffset = []; // 화면 픽셀 좌표 경로 (Vector2 배열)
+        this.grid = []; 
+        this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] };
+        this.tilesMovedSinceLastDay = 0;
     }
 
     preload() {
@@ -63,12 +55,12 @@ class GameScene extends Phaser.Scene {
         this.load.image('skeleton_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png');
         this.load.image('orc_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png');
         this.load.image('demon_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png');
-        this.load.image('slime_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png'); // 슬라임 임시
+        this.load.image('slime_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png'); 
     }
 
     create() {
         console.log("GameScene create start");
-        this.scene.launch('UIScene'); // [수정] run 대신 launch 사용 (혹시 모를 초기화 순서 문제 방지)
+        this.scene.launch('UIScene'); 
         
         this.pathIndex = 0;
         this.day = 1;
@@ -76,15 +68,13 @@ class GameScene extends Phaser.Scene {
         this.enemyTriggers = this.physics.add.group();
         this.mapGraphics = this.add.group();
 
-        // [수정] 복잡한 랜덤 루프 생성 시도
-        this.generateRandomLoop(); 
+        this.generateRandomLoop(); // [수정] 새로운 루프 생성 함수 호출
         
         this.scale.on('resize', this.redraw, this);
         this.events.on('combatComplete', this.onCombatComplete, this);
         
         this.heroData = { hp: 100, maxHp: 100 };
         
-        // UIScene이 준비될 시간을 조금 더 확보
         this.time.delayedCall(200, () => { 
              if (this.scene.isActive('UIScene')) {
                 this.scene.get('UIScene').events.emit('updateHeroHP', this.heroData.hp, this.heroData.maxHp);
@@ -109,21 +99,21 @@ class GameScene extends Phaser.Scene {
         this.mapGraphics.clear(true, true);
         
         this.calculateMapOffsets(gameWidth, gameHeight);
-        this.drawTiles(gameWidth, gameHeight); // 타일 그리기가 오프셋 계산 이후 수행되어야 함
-        this.updatePathCoordsWithOffset(); // 오프셋 적용된 경로 업데이트
+        this.drawTiles(gameWidth, gameHeight); 
+        this.updatePathCoordsWithOffset(); // 오프셋 적용된 최종 경로 생성
         
-        if (!this.hero && this.pathCoordsWithOffset.length > 0) { // 경로 생성 확인
+        if (!this.hero && this.pathCoordsWithOffset.length > 0) { 
             console.log("GameScene creating hero");
             const startPos = this.pathCoordsWithOffset[0];
             if (!startPos) {
                  console.error("Cannot create hero, start position is invalid!");
                  return;
             }
-            this.hero = this.physics.add.sprite(startPos.x, startPos.y, 'pixel').setDisplaySize(this.TILE_SIZE * 0.5, this.TILE_SIZE * 0.75).setTint(0x00ffff); // 영웅 크기 조정
+            this.hero = this.physics.add.sprite(startPos.x, startPos.y, 'pixel').setDisplaySize(this.TILE_SIZE * 0.5, this.TILE_SIZE * 0.75).setTint(0x00ffff);
             this.hero.hp = this.heroData.hp;
             this.hero.maxHp = this.heroData.maxHp;
             this.physics.add.overlap(this.hero, this.enemyTriggers, this.onMeetEnemy, null, this);
-        } else if (this.hero && this.pathCoordsWithOffset.length > 0) { // 경로 생성 확인
+        } else if (this.hero && this.pathCoordsWithOffset.length > 0) { 
              console.log("GameScene repositioning hero");
             const currentPos = this.pathCoordsWithOffset[this.pathIndex];
              if (!currentPos) {
@@ -139,7 +129,6 @@ class GameScene extends Phaser.Scene {
     }
 
     calculateMapOffsets(gameWidth, gameHeight) {
-        // [수정] 맵의 실제 픽셀 크기를 계산 (루프 경로 기반)
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         this.pathCoords.forEach(coord => {
             minX = Math.min(minX, coord.x);
@@ -147,13 +136,13 @@ class GameScene extends Phaser.Scene {
             maxX = Math.max(maxX, coord.x);
             maxY = Math.max(maxY, coord.y);
         });
-        const mapPixelWidth = (maxX - minX + this.TILE_SIZE); // 경로 전체 폭
-        const mapPixelHeight = (maxY - minY + this.TILE_SIZE); // 경로 전체 높이
+        const mapPixelWidth = (maxX - minX + 1) * this.TILE_SIZE; // 그리드 칸 수 * 타일 크기
+        const mapPixelHeight = (maxY - minY + 1) * this.TILE_SIZE;
 
         const gameplayAreaWidth = gameWidth - this.RIGHT_UI_WIDTH;
         const gameplayAreaHeight = gameHeight - this.TOP_UI_HEIGHT;
         
-        // 오프셋 계산 시, 맵의 좌상단 좌표(minX, minY)를 고려
+        // 중앙 정렬 + 좌상단 좌표(minX, minY) 보정
         this.MAP_OFFSET_X = (gameplayAreaWidth / 2) - (mapPixelWidth / 2);
         this.MAP_OFFSET_Y = this.TOP_UI_HEIGHT + (gameplayAreaHeight / 2) - (mapPixelHeight / 2);
     }
@@ -163,120 +152,155 @@ class GameScene extends Phaser.Scene {
         this.moveHero();
     }
 
-    // [수정] Random Walk 기반 루프 생성
+    // [수정] ★★★ Base Shape + Deformation 루프 생성 함수 ★★★
     generateRandomLoop() {
         this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(0));
         this.pathCoords = [];
         this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] };
 
-        const targetLength = Phaser.Math.Between(30, 40);
-        const startX = Math.floor(this.GRID_WIDTH / 3); // 중앙 약간 왼쪽에서 시작
-        const startY = Math.floor(this.GRID_HEIGHT / 2);
-        let currentX = startX;
-        let currentY = startY;
-        let lastDir = -1; // 이전 이동 방향 (0:상, 1:하, 2:좌, 3:우)
+        const minLoopSize = 5;
+        const maxLoopSize = 8;
+        const baseWidth = Phaser.Math.Between(minLoopSize, maxLoopSize);
+        const baseHeight = Phaser.Math.Between(minLoopSize, maxLoopSize);
+        
+        // 그리드 중앙 근처에 기본 사각형 배치
+        const startX = Math.floor(this.GRID_WIDTH / 2 - baseWidth / 2);
+        const startY = Math.floor(this.GRID_HEIGHT / 2 - baseHeight / 2);
+        
+        let segments = []; // 각 변의 시작점과 끝점, 방향 저장
 
-        this.grid[currentY][currentX] = TILE_TYPE_PATH;
-        this.pathCoords.push({ x: currentX, y: currentY });
+        // 1. 기본 사각형 경로 생성 및 세그먼트 정보 저장
+        let currentPath = [];
+        // Top (left to right)
+        for (let x = startX; x <= startX + baseWidth; x++) currentPath.push({ x: x, y: startY });
+        segments.push({ start: { x: startX, y: startY }, end: { x: startX + baseWidth, y: startY }, dir: 'right' });
+        // Right (top to bottom)
+        for (let y = startY + 1; y <= startY + baseHeight; y++) currentPath.push({ x: startX + baseWidth, y: y });
+        segments.push({ start: { x: startX + baseWidth, y: startY + 1 }, end: { x: startX + baseWidth, y: startY + baseHeight }, dir: 'down' });
+        // Bottom (right to left)
+        for (let x = startX + baseWidth - 1; x >= startX; x--) currentPath.push({ x: startX + baseHeight, y: x }); // 버그 수정: y좌표 수정
+        segments.push({ start: { x: startX + baseWidth - 1, y: startY + baseHeight }, end: { x: startX, y: startY + baseHeight }, dir: 'left' });
+        // Left (bottom to top)
+        for (let y = startY + baseHeight - 1; y > startY; y--) currentPath.push({ x: startX, y: y });
+        segments.push({ start: { x: startX, y: startY + baseHeight - 1 }, end: { x: startX, y: startY + 1 }, dir: 'up' });
+        
+        // 2. 경로 변형 (Detour 추가)
+        let finalPath = [];
+        let totalTiles = 0;
+        const maxTiles = 40; // 최대 타일 수 제한
+        
+        for(const segment of segments) {
+            let segmentPath = [];
+            const len = (segment.dir === 'right' || segment.dir === 'left') ? 
+                        Math.abs(segment.end.x - segment.start.x) + 1:
+                        Math.abs(segment.end.y - segment.start.y) + 1;
+            
+            // 현재 세그먼트의 모든 점 추가 (Detour 없을 경우 대비)
+             if (segment.dir === 'right') for (let x = segment.start.x; x <= segment.end.x; x++) segmentPath.push({ x: x, y: segment.start.y });
+             else if (segment.dir === 'down') for (let y = segment.start.y; y <= segment.end.y; y++) segmentPath.push({ x: segment.start.x, y: y });
+             else if (segment.dir === 'left') for (let x = segment.start.x; x >= segment.end.x; x--) segmentPath.push({ x: x, y: segment.start.y });
+             else if (segment.dir === 'up') for (let y = segment.start.y; y >= segment.end.y; y--) segmentPath.push({ x: segment.start.x, y: y });
 
-        const directions = [ { dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 } ]; // 상하좌우
+            // 일정 확률(50%) 및 타일 수 여유 있을 때 Detour 시도
+            if (len > 3 && Math.random() < 0.5 && totalTiles + segmentPath.length + 4 < maxTiles) { // Detour는 최소 4칸 추가
+                const detourLength = Phaser.Math.Between(1, 2); // 돌출 길이
+                const detourStartIdx = Phaser.Math.Between(1, segmentPath.length - 3); // 변의 중간 부분에서 시작
+                const p1 = segmentPath[detourStartIdx];
+                const p2 = segmentPath[detourStartIdx + 1];
+                let detourPath = [];
 
-        for (let i = 1; i < targetLength; i++) {
-            let possibleDirs = [0, 1, 2, 3];
-            // 바로 이전 방향으로 되돌아가지 않기 (왔던 길 바로 X)
-            if (lastDir !== -1) {
-                possibleDirs.splice(possibleDirs.indexOf(lastDir ^ 1), 1); // 반대 방향 제거 (0^1=1, 1^1=0, 2^1=3, 3^1=2)
-            }
+                // Detour 방향 결정 (변의 진행 방향에 수직) & 공간 확인
+                let dx1, dy1, dx2, dy2;
+                if (segment.dir === 'right' || segment.dir === 'left') { // 수평 이동 시 수직 Detour
+                    dx1 = 0; dy1 = Math.random() < 0.5 ? -1 : 1; // 위 또는 아래
+                    dx2 = (segment.dir === 'right' ? 1 : -1); dy2 = 0; // 원래 진행 방향
+                } else { // 수직 이동 시 수평 Detour
+                    dx1 = Math.random() < 0.5 ? -1 : 1; dy1 = 0; // 좌 또는 우
+                    dx2 = 0; dy2 = (segment.dir === 'down' ? 1 : -1); // 원래 진행 방향
+                }
 
-            let moved = false;
-            while (possibleDirs.length > 0) {
-                const randIndex = Phaser.Math.Between(0, possibleDirs.length - 1);
-                const dirIndex = possibleDirs[randIndex];
-                const dir = directions[dirIndex];
-                const nextX = currentX + dir.dx;
-                const nextY = currentY + dir.dy;
-
-                // 맵 경계 체크 및 이미 방문한 곳인지 체크 (단, 마지막에 시작점으로 돌아가는 것은 허용)
-                if (nextX >= 1 && nextX < this.GRID_WIDTH - 1 && 
-                    nextY >= 1 && nextY < this.GRID_HEIGHT - 1 &&
-                    (this.grid[nextY][nextX] === TILE_TYPE_EMPTY || (i === targetLength - 1 && nextX === startX && nextY === startY)) )
-                {
-                    currentX = nextX;
-                    currentY = nextY;
-                    this.grid[currentY][currentX] = TILE_TYPE_PATH;
-                    this.pathCoords.push({ x: currentX, y: currentY });
-                    lastDir = dirIndex;
-                    moved = true;
-                    break;
-                } else {
-                    possibleDirs.splice(randIndex, 1); // 불가능한 방향 제거
+                // Detour 경로 생성 및 공간 확인 (그리드 범위 및 비어있는지)
+                let possible = true;
+                let tempPath = [];
+                let cx = p1.x, cy = p1.y;
+                for(let i=0; i<detourLength; i++) {
+                    cx += dx1; cy += dy1;
+                    if (cx<1 || cx>=this.GRID_WIDTH-1 || cy<1 || cy>=this.GRID_HEIGHT-1 || this.grid[cy][cx] !== TILE_TYPE_EMPTY) { possible = false; break; }
+                    tempPath.push({x: cx, y: cy});
+                }
+                if(possible) {
+                    for(let i=0; i<1; i++) { // 가로/세로 길이 1만큼 이동
+                        cx += dx2; cy += dy2;
+                        if (cx<1 || cx>=this.GRID_WIDTH-1 || cy<1 || cy>=this.GRID_HEIGHT-1 || this.grid[cy][cx] !== TILE_TYPE_EMPTY) { possible = false; break; }
+                        tempPath.push({x: cx, y: cy});
+                    }
+                }
+                if(possible) {
+                    for(let i=0; i<detourLength; i++) {
+                        cx -= dx1; cy -= dy1; // 반대 방향으로 복귀
+                        if (cx<1 || cx>=this.GRID_WIDTH-1 || cy<1 || cy>=this.GRID_HEIGHT-1 || this.grid[cy][cx] !== TILE_TYPE_EMPTY) { possible = false; break; }
+                        tempPath.push({x: cx, y: cy});
+                    }
+                }
+                 // 마지막 지점이 p2와 일치하는지 확인
+                 if (possible && cx === p2.x && cy === p2.y) {
+                    // Detour 성공: segmentPath 중간을 detourPath로 교체
+                    detourPath = tempPath;
+                    segmentPath.splice(detourStartIdx + 1, 0, ...detourPath.slice(0, -1)); // p2 제외하고 삽입
+                    
+                    // Detour 경로를 grid에 표시 (겹침 방지용)
+                    detourPath.forEach(p => this.grid[p.y][p.x] = TILE_TYPE_PATH); 
                 }
             }
-            if (!moved) break; // 더 이상 이동 불가 시 중단
+            
+            // 최종 경로에 추가 (마지막 점은 다음 세그먼트의 시작점이므로 제외)
+            finalPath.push(...segmentPath.slice(0, -1));
+            totalTiles += segmentPath.length -1;
+             
+             // grid 업데이트 (Detour 없을 경우) - Detour 시에는 위에서 이미 처리됨
+             if (detourPath.length === 0) {
+                 segmentPath.forEach(p => this.grid[p.y][p.x] = TILE_TYPE_PATH);
+             }
         }
         
-        // 마지막 지점이 시작점이 아니면, 강제로 시작점 추가 (억지 루프)
-        if (currentX !== startX || currentY !== startY) {
-             this.pathCoords.push({ x: startX, y: startY });
-        }
-        
-        // 생성된 경로가 너무 짧으면 기본 사각 루프 생성 (안전장치)
-        if(this.pathCoords.length < 10) {
-            console.warn("Random walk failed, creating default loop.");
-            this.generateDefaultLoop(); // 기본 사각 루프로 대체
-            return;
-        }
+        // 시작점으로 돌아오도록 마지막 점 추가
+        finalPath.push(finalPath[0]);
+        this.pathCoords = finalPath;
 
-        // --- 특수 타일 지정 ---
-        const pathIndices = Array.from(this.pathCoords.keys()); // [0, 1, 2, ...]
-        pathIndices.shift(); // 출발점(0번 인덱스) 제외
-        Phaser.Utils.Array.Shuffle(pathIndices); // 인덱스 섞기
+        // --- 특수 타일 지정 (이전과 동일) ---
+        if(this.pathCoords.length > 10) { // 경로가 유효할 때만
+            const pathIndices = Array.from(this.pathCoords.keys()); 
+            pathIndices.shift(); // 출발점 제외
+             pathIndices.pop(); // 도착점(출발점과 동일) 제외
+            Phaser.Utils.Array.Shuffle(pathIndices); 
 
-        // 적 2 스폰 타일 (2개)
-        for(let i = 0; i < 2 && pathIndices.length > 0; i++) {
-            const index = pathIndices.pop();
-            const coord = this.pathCoords[index];
-            this.grid[coord.y][coord.x] = TILE_TYPE_ENEMY2;
-            this.specialTileCoords[TILE_TYPE_ENEMY2].push(coord);
-        }
-        // 적 3 스폰 타일 (3개)
-        for(let i = 0; i < 3 && pathIndices.length > 0; i++) {
-            const index = pathIndices.pop();
-            const coord = this.pathCoords[index];
-            this.grid[coord.y][coord.x] = TILE_TYPE_ENEMY3;
-            this.specialTileCoords[TILE_TYPE_ENEMY3].push(coord);
-        }
-        // 적 5 스폰 타일 (1개)
-        if(pathIndices.length > 0) {
-            const index = pathIndices.pop();
-            const coord = this.pathCoords[index];
-            this.grid[coord.y][coord.x] = TILE_TYPE_ENEMY5;
-            this.specialTileCoords[TILE_TYPE_ENEMY5].push(coord);
+            for(let i = 0; i < 2 && pathIndices.length > 0; i++) {
+                const index = pathIndices.pop();
+                const coord = this.pathCoords[index];
+                this.grid[coord.y][coord.x] = TILE_TYPE_ENEMY2;
+                this.specialTileCoords[TILE_TYPE_ENEMY2].push(coord);
+            }
+            for(let i = 0; i < 3 && pathIndices.length > 0; i++) {
+                const index = pathIndices.pop();
+                const coord = this.pathCoords[index];
+                this.grid[coord.y][coord.x] = TILE_TYPE_ENEMY3;
+                this.specialTileCoords[TILE_TYPE_ENEMY3].push(coord);
+            }
+            if(pathIndices.length > 0) {
+                const index = pathIndices.pop();
+                const coord = this.pathCoords[index];
+                this.grid[coord.y][coord.x] = TILE_TYPE_ENEMY5;
+                this.specialTileCoords[TILE_TYPE_ENEMY5].push(coord);
+            }
         }
         console.log("Generated loop length:", this.pathCoords.length);
         console.log("Special Tiles:", this.specialTileCoords);
     }
-
-    // 기본 사각 루프 생성 (Fallback)
-    generateDefaultLoop() {
-        this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(0));
-        this.pathCoords = [];
-        const loopSize = 5;
-        const startX = 5, startY = 5;
-        this.startGridPos = {x: startX, y: startY};
-        for (let x = startX; x <= startX + loopSize; x++) { this.grid[startY][x] = 1; this.pathCoords.push({ x: x, y: startY }); }
-        for (let y = startY + 1; y <= startY + loopSize; y++) { this.grid[y][startX + loopSize] = 1; this.pathCoords.push({ x: startX + loopSize, y: y }); }
-        for (let x = startX + loopSize - 1; x >= startX; x--) { this.grid[startY + loopSize][x] = 1; this.pathCoords.push({ x: x, y: startY + loopSize }); }
-        for (let y = startY + loopSize - 1; y > startY; y--) { this.grid[y][startX] = 1; this.pathCoords.push({ x: startX, y: y }); }
-        this.pathCoords.push({ x: startX, y: startY }); // 마지막은 시작점
-        // Fallback에서는 특수 타일 지정 생략
-    }
     
-    // [수정] pathCoords를 기반으로 오프셋 적용된 Vector2 배열 생성
     updatePathCoordsWithOffset() {
         this.pathCoordsWithOffset = this.pathCoords.map(coord => {
             return new Phaser.Math.Vector2(
-                coord.x * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_X, // 타일 중앙 좌표
+                coord.x * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_X,
                 coord.y * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_Y
             );
         });
@@ -286,18 +310,10 @@ class GameScene extends Phaser.Scene {
         const bgGraphics = this.add.graphics();
         this.mapGraphics.add(bgGraphics);
         
-        // 배경색 채우기는 UIScene이 담당하므로 여기서는 제거
-        // bgGraphics.fillStyle(0x000000).fillRect(0, 0, gameWidth, gameHeight); 
+        bgGraphics.fillStyle(0x000000).fillRect(0, 0, gameWidth, gameHeight); 
         
-        // 맵 영역 배경 (이전과 동일, 단 위치는 오프셋 사용)
-        // const mapBgWidth = (this.GRID_WIDTH * this.TILE_SIZE); // 이제 그리드 크기가 아닌 실제 루프 크기 기반
-        // const mapBgHeight = (this.GRID_HEIGHT * this.TILE_SIZE);
-        // bgGraphics.fillStyle(0x333333)
-        //     .fillRect(this.MAP_OFFSET_X, this.MAP_OFFSET_Y, mapBgWidth, mapBgHeight)
-        //     .lineStyle(2, 0x8B4513)
-        //     .strokeRect(this.MAP_OFFSET_X, this.MAP_OFFSET_Y, mapBgWidth, mapBgHeight);
+        // 맵 배경은 그리지 않음 (루프 타일만 그림)
 
-        // [수정] pathCoords 기준으로 타일 그리기
         this.pathCoords.forEach(coord => {
             const tileX = coord.x * this.TILE_SIZE + this.MAP_OFFSET_X;
             const tileY = coord.y * this.TILE_SIZE + this.MAP_OFFSET_Y;
@@ -334,109 +350,82 @@ class GameScene extends Phaser.Scene {
         const distance = Phaser.Math.Distance.Between(this.hero.x, this.hero.y, targetPos.x, targetPos.y);
 
         if (distance < 4) {
-            // 타일 도착
             this.pathIndex = (this.pathIndex + 1) % this.pathCoordsWithOffset.length;
             this.tilesMovedTotal++;
-            this.tilesMovedSinceLastDay++; // [신규] 날짜 계산용 카운터 증가
+            this.tilesMovedSinceLastDay++; 
 
-            // [수정] 날짜 변경 로직
             if (this.tilesMovedSinceLastDay >= 12) {
                 this.advanceDay();
             }
-
-            // [수정] 루프 완료 (출발점 도착) 시 적 5 스폰
-            if (this.pathIndex === 0) {
+            if (this.pathIndex === 0) { // 루프 완료 시점 확인 (advanceDay 이후)
                  this.spawnEnemy5();
             }
-            
-            // 적 스폰은 날짜 변경 시 처리하므로 checkSpawns 제거
-            // this.checkSpawns(); 
-
         } else {
-            // 다음 타일로 이동
-            this.physics.moveTo(this.hero, targetPos.x, targetPos.y, 150); // 이동 속도 약간 증가
+            this.physics.moveTo(this.hero, targetPos.x, targetPos.y, 150); 
         }
     }
     
-    // [신규] 날짜 변경 및 관련 처리 함수
     advanceDay() {
         this.day++;
         this.tilesMovedSinceLastDay = 0;
         console.log(`Day ${this.day} started`);
         
-        // UI 업데이트
         this.scene.get('UIScene').events.emit('updateDay', this.day);
         
-        // (요청) 체력 회복
         if (this.hero) {
             this.hero.hp = this.hero.maxHp;
             this.scene.get('UIScene').events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp);
         } else {
-             this.heroData.hp = this.heroData.maxHp; // 영웅 생성 전이면 데이터만 업데이트
+             this.heroData.hp = this.heroData.maxHp;
         }
         
-        // --- 날짜 기반 적 스폰 ---
-        // 1번 적 (10% 확률)
         this.spawnEnemy1();
-        
-        // 2번 적 (2일 주기)
-        if (this.day % 2 === 0) {
-            this.spawnEnemy2();
-        }
-        
-        // 3번 적 (3일 주기)
-        if (this.day % 3 === 0) {
-            this.spawnEnemy3();
-        }
+        if (this.day % 2 === 0) this.spawnEnemy2();
+        if (this.day % 3 === 0) this.spawnEnemy3();
     }
 
-    // [신규] 적 스폰 함수들
-    spawnEnemy1() { // 고블린
+    spawnEnemy1() { 
         if (Math.random() < 0.10) {
-             // 출발점을 제외한 경로 인덱스 중 랜덤 선택
-            const spawnIndex = Phaser.Math.Between(1, this.pathCoordsWithOffset.length - 1); 
+            const spawnIndex = Phaser.Math.Between(1, this.pathCoordsWithOffset.length - 2); // 출발/도착 제외
             const spawnPos = this.pathCoordsWithOffset[spawnIndex];
              if(spawnPos) this.spawnEnemyTriggerAt('goblin', spawnPos.x, spawnPos.y);
         }
     }
-    spawnEnemy2() { // 스켈레톤
+    spawnEnemy2() { 
         this.specialTileCoords[TILE_TYPE_ENEMY2].forEach(coord => {
             const spawnPos = this.getPixelCoord(coord);
              if(spawnPos) this.spawnEnemyTriggerAt('skeleton', spawnPos.x, spawnPos.y);
         });
     }
-    spawnEnemy3() { // 오크
+    spawnEnemy3() { 
         this.specialTileCoords[TILE_TYPE_ENEMY3].forEach(coord => {
             const spawnPos = this.getPixelCoord(coord);
             if(spawnPos) this.spawnEnemyTriggerAt('orc', spawnPos.x, spawnPos.y);
         });
     }
-    spawnEnemy5() { // 슬라임 (3마리)
+    spawnEnemy5() { 
         if (this.specialTileCoords[TILE_TYPE_ENEMY5].length > 0) {
             const coord = this.specialTileCoords[TILE_TYPE_ENEMY5][0];
             const spawnPos = this.getPixelCoord(coord);
             if (spawnPos) {
                  for(let i=0; i<3; i++) {
-                     // 약간의 위치 변동을 주어 겹치지 않게
-                     const offsetX = Phaser.Math.Between(-5, 5);
-                     const offsetY = Phaser.Math.Between(-5, 5);
+                     const offsetX = Phaser.Math.Between(-this.TILE_SIZE * 0.2, this.TILE_SIZE * 0.2); // 스폰 위치 미세 조정
+                     const offsetY = Phaser.Math.Between(-this.TILE_SIZE * 0.2, this.TILE_SIZE * 0.2);
                     this.spawnEnemyTriggerAt('slime', spawnPos.x + offsetX, spawnPos.y + offsetY);
                  }
             }
         }
     }
 
-    // [신규] 특정 위치에 적 트리거 생성
     spawnEnemyTriggerAt(enemyKey, x, y) {
         if (!EnemyData[enemyKey]) return;
         console.log(`Spawning ${enemyKey} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
         const enemy = this.enemyTriggers.create(x, y, 'pixel')
-            .setDisplaySize(this.TILE_SIZE * 0.4, this.TILE_SIZE * 0.4) // 적 크기 조정
+            .setDisplaySize(this.TILE_SIZE * 0.4, this.TILE_SIZE * 0.4) 
             .setTint(EnemyData[enemyKey].color);
         enemy.enemyKey = enemyKey; 
     }
     
-    // [신규] 그리드 좌표를 화면 픽셀 좌표(타일 중앙)로 변환
     getPixelCoord(gridCoord) {
         if (!gridCoord) return null;
         return new Phaser.Math.Vector2(
@@ -455,11 +444,6 @@ class GameScene extends Phaser.Scene {
             heroMaxHp: this.hero.maxHp
         };
         
-        // [보류] 적4(demon) 전투 참가 로직 필요
-        // if (enemyKey === 'goblin' && Math.random() < 0.40) {
-        //     combatData.reinforcement = EnemyData['demon'];
-        // }
-
         this.scene.sleep('UIScene'); 
         this.scene.pause();
         this.scene.launch('CombatScene', combatData);
@@ -483,7 +467,6 @@ class GameScene extends Phaser.Scene {
             this.scene.resume();
             console.log("GameScene calling redraw after combat");
             this.redraw(this.scale.gameSize); 
-            // 영웅 위치/상태 복구는 redraw에서 처리
         }
     }
 }
@@ -502,8 +485,6 @@ class CombatScene extends Phaser.Scene {
         this.heroMaxHp = data.heroMaxHp;
         this.enemyHp = this.enemyData.hp;
         this.enemyMaxHp = this.enemyData.hp;
-        // [보류] 증원군 데이터 처리 필요
-        // this.reinforcementData = data.reinforcement; 
     }
     
     create() {
@@ -544,9 +525,6 @@ class CombatScene extends Phaser.Scene {
         
         this.combatRunning = true;
         this.time.delayedCall(this.turnDelay, this.playerAttack, [], this); 
-        
-        // [보류] 증원군 등장 로직 추가 필요
-        // if(this.reinforcementData) { ... }
     }
     
     updateHpBars() {
@@ -645,7 +623,6 @@ class CombatScene extends Phaser.Scene {
     
     endCombat(loot) {
         this.combatRunning = false;
-        // endCombat이 여러 번 호출될 수 있으므로 GameScene 존재 확인
         const gameScene = this.scene.get('GameScene');
         if (gameScene) {
             gameScene.events.emit('combatComplete', { 
@@ -675,7 +652,7 @@ class UIScene extends Phaser.Scene {
         super('UIScene');
         this.inventorySlots = [];
         this.equipSlots = {};
-        this.inventory = new Array(16).fill(null); // 인벤토리 데이터 초기화
+        this.inventory = new Array(16).fill(null);
         
         this.UI_WIDTH = 190;
         this.UI_PADDING = 10;
