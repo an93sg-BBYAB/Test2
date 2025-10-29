@@ -1,4 +1,4 @@
-// game.js (v6 - RESIZE 모드 및 동적 레이아웃 적용)
+// game.js (v6.1 - 맵 표시 버그 수정 및 STA 색상 변경)
 
 // --- 데이터 정의 --- (동일)
 const ItemData = {
@@ -25,9 +25,8 @@ class GameScene extends Phaser.Scene {
     constructor() {
         super('GameScene');
         this.TILE_SIZE = 32;
-        // 맵 오프셋 (UI 상단바와 왼쪽 여백 고려)
         this.MAP_OFFSET_X = 140; 
-        this.TOP_UI_HEIGHT = 50; // UIScene과 동일한 값
+        this.TOP_UI_HEIGHT = 50; 
         this.MAP_OFFSET_Y = this.TOP_UI_HEIGHT + 70;
     }
 
@@ -41,7 +40,7 @@ class GameScene extends Phaser.Scene {
     }
 
     create() {
-        this.scene.run('UIScene'); // UIScene을 동시에 실행
+        this.scene.run('UIScene'); 
         
         this.pathCoords = [];
         this.pathIndex = 0;
@@ -53,7 +52,7 @@ class GameScene extends Phaser.Scene {
         const GRID_WIDTH = 13; 
         const GRID_HEIGHT = 9; 
         this.generateRandomLoop(GRID_WIDTH, GRID_HEIGHT);
-        this.drawTiles();
+        this.drawTiles(); // [수정] 이 함수가 이제 배경을 올바르게 그림
 
         const startPos = this.pathCoords[0];
         this.hero = this.physics.add.sprite(startPos.x, startPos.y, 'pixel').setDisplaySize(16, 24).setTint(0x00ffff);
@@ -98,7 +97,7 @@ class GameScene extends Phaser.Scene {
     }
 
     drawTiles() {
-        // [수정] 맵 배경을 그리기 전, 씬 전체를 검게 칠합니다. (UIScene이 이미 칠했지만 안전장치)
+        // [수정] GameScene이 전체 화면 배경(검은색)을 책임지고 그림
         this.add.graphics().fillStyle(0x000000).fillRect(0, 0, this.cameras.main.width, this.cameras.main.height); 
         
         const mapBgWidth = (this.grid[0].length * this.TILE_SIZE);
@@ -168,7 +167,6 @@ class GameScene extends Phaser.Scene {
             heroMaxHp: this.hero.maxHp
         };
 
-        // (수정) UIScene을 'sleep'(숨기기)으로 변경
         this.scene.sleep('UIScene'); 
         this.scene.pause();
         this.scene.launch('CombatScene', combatData);
@@ -176,7 +174,6 @@ class GameScene extends Phaser.Scene {
     }
     
     onCombatComplete(data) {
-        // (수정) UIScene을 'wake'(다시 보이기)로 변경
         this.scene.wake('UIScene'); 
         
         this.hero.hp = data.heroHp;
@@ -195,7 +192,7 @@ class GameScene extends Phaser.Scene {
     }
 }
 
-// --- 2. 전투 씬 --- (동적 크기 적용)
+// --- 2. 전투 씬 --- (v6와 동일)
 class CombatScene extends Phaser.Scene {
     constructor() {
         super('CombatScene');
@@ -212,28 +209,22 @@ class CombatScene extends Phaser.Scene {
     }
     
     create() {
-        // [수정] ★★★ '게임 화면 크기' (현재 카메라)를 기준으로 전투 화면 크기 계산 ★★★
         const gameWidth = this.cameras.main.width;
         const gameHeight = this.cameras.main.height;
         
-        // (요청) '게임 화면 크기'의 0.5배
         const combatPanelWidth = gameWidth * 0.5;
         const combatPanelHeight = gameHeight * 0.5;
-        // (요청) '게임 화면'의 정중앙에 배치
         const combatPanelX = (gameWidth - combatPanelWidth) / 2;
         const combatPanelY = (gameHeight - combatPanelHeight) / 2;
         
-        // 반투명 배경 (전체 화면)
         this.add.graphics().fillStyle(0x000000, 0.9).fillRect(0, 0, gameWidth, gameHeight); 
         
-        // 전투 패널
         this.add.graphics()
             .fillStyle(0x333333)
             .fillRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight)
             .lineStyle(2, 0x8B4513)
             .strokeRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight);
         
-        // 일러스트 (패널 크기에 비례하여 배치)
         this.heroIllust = this.add.image(combatPanelX + combatPanelWidth * 0.3, combatPanelY + combatPanelHeight * 0.65, 'hero_illust')
                             .setDisplaySize(120, 160).setTint(0x00ffff);
         this.enemyIllust = this.add.image(combatPanelX + combatPanelWidth * 0.7, combatPanelY + combatPanelHeight * 0.65, this.enemyData.illustKey)
@@ -336,7 +327,6 @@ class CombatScene extends Phaser.Scene {
         const itemData = ItemData[itemKey];
         const itemIcon = this.add.rectangle(this.enemyIllust.x, this.enemyIllust.y, 20, 20, itemData.color);
         
-        // [수정] 아이템 도착 좌표를 동적으로 계산 (화면 너비에 따라)
         const inventoryCenterSlotX = this.cameras.main.width - 190 + 50; 
         const inventoryCenterSlotY = 415;
         this.add.tween({
@@ -374,7 +364,7 @@ class CombatScene extends Phaser.Scene {
     }
 }
 
-// --- 3. UI 씬 --- (동적 위치 적용)
+// --- 3. UI 씬 --- (버그 수정 및 STA 색상 변경)
 class UIScene extends Phaser.Scene {
     constructor() {
         super('UIScene');
@@ -392,17 +382,15 @@ class UIScene extends Phaser.Scene {
     }
     
     create() {
-        // [수정] ★★★ 현재 씬의 카메라(즉, '게임 화면') 크기를 가져옴 ★★★
         const gameWidth = this.cameras.main.width;
         const gameHeight = this.cameras.main.height;
 
-        // [수정] UI 시작 X 좌표를 동적으로 계산 (게임 화면 우측)
         this.UI_START_X = gameWidth - this.UI_WIDTH;
 
-        // 배경 (검은색)
-        this.add.graphics().fillStyle(0x000000).fillRect(0, 0, gameWidth, gameHeight);
+        // [수정] ★★★ UIScene은 이제 전체 배경을 그리지 않습니다 ★★★
+        // this.add.graphics().fillStyle(0x000000).fillRect(0, 0, gameWidth, gameHeight); // 이 줄 삭제
 
-        // 상단 UI 프레임 (가로 꽉 채움)
+        // 상단 UI 프레임
         this.add.graphics().fillStyle(0x666666).fillRect(0, 0, gameWidth, this.TOP_UI_HEIGHT); 
         this.add.text(10, 15, '시간의 흐름', { fontSize: '10px', fill: '#000000' });
         this.dayText = this.add.text(80, 15, 'Day: 1', { fontSize: '14px', fill: '#000000' });
@@ -410,7 +398,7 @@ class UIScene extends Phaser.Scene {
         this.add.text(300, 15, '게임 UI 화면', { fontSize: '10px', fill: '#000000' });
         this.add.text(450, 15, '몇 번째 루프인지 표시', { fontSize: '10px', fill: '#000000' });
 
-        // 우측 UI 프레임 (세로 꽉 채움)
+        // 우측 UI 프레임
         this.add.graphics().fillStyle(0x333333).fillRect(this.UI_START_X, 0, this.UI_WIDTH, gameHeight);
         
         const RIGHT_UI_START_X = this.UI_START_X + this.UI_PADDING;
@@ -425,7 +413,8 @@ class UIScene extends Phaser.Scene {
         this.heroHpBarFill = this.add.rectangle(RIGHT_UI_START_X, currentY, this.hpBarWidth, this.hpBarHeight, 0x00ff00).setOrigin(0);
         
         currentY += 15;
-        this.add.text(RIGHT_UI_START_X, currentY, 'STA: 100/100', { fontSize: '12px', fill: '#00ffff' }); 
+        // [수정] ★★★ 스태미너 색상 변경 ★★★
+        this.add.text(RIGHT_UI_START_X, currentY, 'STA: 100/100', { fontSize: '12px', fill: '#B09253' }); // 0xB09253 (16진수)
         currentY += 30;
 
         const EQUIP_SLOT_SIZE = 36;
@@ -479,7 +468,6 @@ class UIScene extends Phaser.Scene {
         this.selectedHighlight = this.add.graphics().lineStyle(2, 0xcc99ff); 
         this.selectedHighlight.visible = false;
         
-        // [수정] 에러 텍스트 위치 동적 계산
         this.errorText = this.add.text(this.UI_START_X + this.UI_WIDTH / 2, gameHeight - 30, '', { fontSize: '10px', fill: '#ff0000' }).setOrigin(0.5); 
 
         // 이벤트 리스너
@@ -584,10 +572,9 @@ class UIScene extends Phaser.Scene {
     }
 }
 
-// --- Phaser 게임 설정 ---
+// --- Phaser 게임 설정 --- (v6와 동일)
 const config = {
     type: Phaser.AUTO,
-    // [수정] ★★★ 화면 크기를 브라우저에 맞게 100%로 설정 ★★★
     width: '100%',
     height: '100%',
     physics: {
@@ -595,9 +582,8 @@ const config = {
         arcade: { debug: false }
     },
     scale: {
-        // [수정] ★★★ 'RESIZE' 모드로 변경하여 브라우저 창 크기에 게임 해상도를 맞춤 ★★★
         mode: Phaser.Scale.RESIZE,
-        autoCenter: Phaser.Scale.NO_CENTER // 리사이즈 모드에서는 센터링 불필요
+        autoCenter: Phaser.Scale.NO_CENTER 
     },
     scene: [GameScene, CombatScene, UIScene]
 };
