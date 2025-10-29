@@ -1,19 +1,25 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Loop Dungeon Proto</title>
+    <title>Loop Dungeon</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <style>
+        /* [수정] 이 스타일이 캔버스를 화면 정중앙에 배치합니다 */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            /* (요청) 전체 페이지 배경을 검은색으로 통일 */
+            background-color: #000000; 
+        }
         body {
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            margin: 0;
-            background: #222;
         }
         canvas {
-            border: 1px solid white;
+            /* 캔버스 테두리를 제거하여 게임 화면만 보이게 합니다 */
+            border: none; 
         }
     </style>
 </head>
