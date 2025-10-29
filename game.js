@@ -50,7 +50,13 @@ class GameScene extends Phaser.Scene {
     }
 
     preload() {
-        this.load.image('pixel', 'https://labs.phaser.io/assets/textures/white-pixel.png');
+        // [수정] 1x1 흰색 픽셀 데이터를 직접 생성 (CORS 방지)
+        const pixelData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wcAAwAB/epA8AAAAABJRU5ErkJggg==';
+        this.textures.addBase64('pixel', pixelData);
+
+        // --- 나머지 preload 코드는 이전과 동일 ---
+        // 참고: 아래 이미지들도 나중에 CORS 오류를 일으킬 수 있으니,
+        // 미리 다운로드하여 로컬 파일('hero_illust.png' 등)로 바꾸는 것이 더 안전합니다.
         this.load.image('hero_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png'); 
         this.load.image('goblin_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png');
         this.load.image('skeleton_illust', 'https://labs.phaser.io/assets/textures/white-pixel.png');
@@ -1092,3 +1098,4 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
+
