@@ -356,6 +356,7 @@ class GameScene extends Phaser.Scene {
         }
         
         console.log("Generated loop length:", this.pathCoords.length);
+        // console.log("Grid dimensions:", this.grid.length, this.grid[0]?.length); // 디버깅용
         console.log("Special Tiles:", this.specialTileCoords);
     }
     
@@ -451,6 +452,7 @@ class GameScene extends Phaser.Scene {
         if(this.pathIndex < 0 || this.pathIndex >= this.pathCoordsWithOffset.length) {
             console.error("Invalid pathIndex:", this.pathIndex, "Resetting to 0.");
             this.pathIndex = 0;
+            // 추가 검사: 경로 자체가 비었는지
              if (this.pathCoordsWithOffset.length === 0) return;
         }
 
@@ -485,7 +487,7 @@ class GameScene extends Phaser.Scene {
         console.log(`Day ${this.day} started`);
         
         const uiScene = this.scene.get('UIScene');
-        if(uiScene && uiScene.events && this.scene.isActive('UIScene')) { 
+        if(uiScene && uiScene.events && this.scene.isActive('UIScene')) { // 활성 상태 확인 추가
              uiScene.events.emit('updateDay', this.day);
         }
         
@@ -573,7 +575,7 @@ class GameScene extends Phaser.Scene {
     onCombatComplete(data) {
         this.scene.wake('UIScene'); 
         
-        if (!this.hero) return; 
+        if (!this.hero) return; // 영웅이 이미 파괴된 경우 (Game Over)
 
         this.hero.hp = data.heroHp;
         const uiScene = this.scene.get('UIScene');
@@ -599,7 +601,7 @@ class GameScene extends Phaser.Scene {
     }
 }
 
-// --- 2. 전투 씬 --- (v7.1과 동일)
+// --- 2. 전투 씬 --- (v6.2와 동일)
 class CombatScene extends Phaser.Scene {
     constructor() {
         super('CombatScene');
@@ -776,7 +778,7 @@ class CombatScene extends Phaser.Scene {
     }
 }
 
-// --- 3. UI 씬 --- (v7.3과 동일 - 최종 오류 수정)
+// --- 3. UI 씬 --- (v6.6과 동일)
 class UIScene extends Phaser.Scene {
     constructor() {
         super('UIScene');
@@ -816,6 +818,7 @@ class UIScene extends Phaser.Scene {
         this.events.on('addItem', this.addItem, this);
         
         console.log("UIScene calling initial redraw");
+        // [수정] redraw 호출을 create 완료 후 안전하게 하기 위해 delayedCall 사용
         this.time.delayedCall(0, () => {
              console.log("Executing delayed initial redraw for UIScene");
             this.redraw(this.scale.gameSize);
@@ -954,6 +957,7 @@ class UIScene extends Phaser.Scene {
         if (!this.scene.isActive() || !this.heroHpText || !this.heroHpBarFill) return;
         this.heroHpText.setText(`HP: ${hp}/${maxHp}`);
         const percent = Math.max(0, hp / maxHp);
+        // hpBarWidth가 redraw 이전에 정의되지 않았을 수 있으므로 확인
         if (typeof this.hpBarWidth === 'number') {
             this.heroHpBarFill.width = this.hpBarWidth * percent;
         } else {
@@ -1027,6 +1031,7 @@ class UIScene extends Phaser.Scene {
                     const itemIcon = this.add.rectangle(slot.x + slot.width/2, slot.y + slot.height/2, slot.width * 0.8, slot.height * 0.8, ItemData[itemKey].color);
                     this.itemIcons.add(itemIcon);
                 } else {
+                    // redraw 중 슬롯이 아직 생성되지 않았을 수 있음, 다음 redraw에서 그려짐
                     // console.warn(`Inventory slot at index ${index} not found during refresh.`);
                 }
             }
@@ -1057,17 +1062,17 @@ class UIScene extends Phaser.Scene {
         }
     }
     
-    // [수정] ★★★ showError 함수의 닫는 중괄호 } 를 추가 ★★★
     showError(message) {
         if (this.errorText) {
             this.errorText.setText(message);
-            if (this.scene.isActive()) {
+            // 씬이 활성 상태일 때만 타이머 설정
+             if (this.scene.isActive()) {
                 this.time.delayedCall(2000, () => {
                     if(this.errorText) this.errorText.setText('');
                 });
-            }
+             }
         }
-    } 
+    } // [수정] ★★★ showError 함수의 닫는 중괄호 추가 ★★★
 } // End of UIScene class
 
 // --- Phaser 게임 설정 --- (v6.2와 동일)
