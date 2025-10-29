@@ -1,4 +1,4 @@
-// game.js (v5.1 - 버그 수정 및 최적화)
+// game.js (v5.2 - 씬 숨기기/깨우기 수정)
 
 // --- 데이터 정의 --- (동일)
 const ItemData = {
@@ -20,7 +20,7 @@ const EnemyData = {
 };
 const ALL_ENEMY_KEYS = Object.keys(EnemyData);
 
-// --- 1. 메인 게임 씬 (필드 탐험) --- (v5와 동일)
+// --- 1. 메인 게임 씬 (필드 탐험) ---
 class GameScene extends Phaser.Scene {
     constructor() {
         super('GameScene');
@@ -39,7 +39,8 @@ class GameScene extends Phaser.Scene {
     }
 
     create() {
-        this.scene.run('UIScene');
+        this.scene.run('UIScene'); // UIScene을 동시에 실행
+        
         this.pathCoords = [];
         this.pathIndex = 0;
         this.startGridPos = null;
@@ -59,7 +60,9 @@ class GameScene extends Phaser.Scene {
         this.hero.maxHp = 100;
         
         this.time.delayedCall(100, () => { 
-             this.scene.get('UIScene').events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp);
+             if (this.scene.isActive('UIScene')) { // UIScene이 활성 상태인지 확인
+                this.scene.get('UIScene').events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp);
+             }
         });
 
         this.physics.add.overlap(this.hero, this.enemyTriggers, this.onMeetEnemy, null, this);
@@ -162,15 +165,19 @@ class GameScene extends Phaser.Scene {
             heroMaxHp: this.hero.maxHp
         };
 
-        this.scene.pause('UIScene'); 
-        this.scene.pause();
-        this.scene.launch('CombatScene', combatData);
+        // [수정] ★★★ UI 씬을 'pause'가 아닌 'sleep' (숨기기) 합니다 ★★★
+        this.scene.sleep('UIScene'); 
+        this.scene.pause(); // GameScene 일시정지
+        this.scene.launch('CombatScene', combatData); // CombatScene을 맨 위에 실행
         enemyTrigger.destroy();
     }
     
     onCombatComplete(data) {
-        this.scene.resume('UIScene');
+        // [수정] ★★★ UI 씬을 'resume'이 아닌 'wake' (다시 보이기) 합니다 ★★★
+        this.scene.wake('UIScene'); 
+        
         this.hero.hp = data.heroHp;
+        // UIScene이 깨어난 후 이벤트를 전달합니다.
         this.scene.get('UIScene').events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp);
         
         if (data.loot) {
@@ -181,12 +188,12 @@ class GameScene extends Phaser.Scene {
             this.hero.destroy();
             this.add.text(this.game.config.width / 2, this.game.config.height / 2, 'GAME OVER', { fontSize: '40px', fill: '#ff0000' }).setOrigin(0.5);
         } else {
-            this.scene.resume();
+            this.scene.resume(); // GameScene 다시 시작
         }
     }
 }
 
-// --- 2. 전투 씬 --- (HP바 최적화)
+// --- 2. 전투 씬 --- (v5.1과 동일)
 class CombatScene extends Phaser.Scene {
     constructor() {
         super('CombatScene');
@@ -221,7 +228,6 @@ class CombatScene extends Phaser.Scene {
         this.enemyIllust = this.add.image(combatPanelX + combatPanelWidth * 0.7, combatPanelY + combatPanelHeight * 0.65, this.enemyData.illustKey)
                             .setDisplaySize(120, 160).setTint(this.enemyData.color);
         
-        // [최적화] HP바를 Graphics가 아닌 Rectangle로 생성
         const barWidth = 100;
         const barHeight = 10;
         const heroHpBarX = this.heroIllust.x - 50;
@@ -234,24 +240,21 @@ class CombatScene extends Phaser.Scene {
         this.enemyHpBarBG = this.add.rectangle(enemyHpBarX, enemyHpBarY, barWidth, barHeight, 0xff0000).setOrigin(0);
         this.enemyHpBarFill = this.add.rectangle(enemyHpBarX, enemyHpBarY, barWidth, barHeight, 0x00ff00).setOrigin(0);
         
-        this.updateHpBars(); // 초기값 설정
+        this.updateHpBars(); 
         
         this.combatRunning = true;
         this.time.delayedCall(this.turnDelay, this.playerAttack, [], this); 
     }
     
-    // [최적화] HP바 업데이트 로직
     updateHpBars() {
         const barWidth = 100;
         const heroPercent = Math.max(0, this.heroHp / this.heroMaxHp);
-        this.heroHpBarFill.width = barWidth * heroPercent; // 너비만 조절
+        this.heroHpBarFill.width = barWidth * heroPercent; 
 
         const enemyPercent = Math.max(0, this.enemyHp / this.enemyMaxHp);
-        this.enemyHpBarFill.width = barWidth * enemyPercent; // 너비만 조절
+        this.enemyHpBarFill.width = barWidth * enemyPercent;
     }
     
-    // (제거) drawHpBar 함수는 이제 updateHpBars로 통합되어 필요 없음
-
     playerAttack() {
         if (!this.combatRunning || !this.heroIllust.active || !this.enemyIllust.active) return;
         
@@ -263,7 +266,7 @@ class CombatScene extends Phaser.Scene {
             yoyo: true,
             onComplete: () => {
                 this.enemyHp -= 10; 
-                this.updateHpBars(); // HP바 업데이트 호출
+                this.updateHpBars();
                 
                 if (this.enemyHp <= 0) {
                     this.defeatEnemy();
@@ -285,7 +288,7 @@ class CombatScene extends Phaser.Scene {
             yoyo: true,
             onComplete: () => {
                 this.heroHp -= this.enemyData.atk;
-                this.updateHpBars(); // HP바 업데이트 호출
+                this.updateHpBars();
                 
                 if (this.heroHp <= 0) {
                     this.defeatHero();
@@ -304,7 +307,6 @@ class CombatScene extends Phaser.Scene {
             duration: 500,
             onComplete: () => {
                 this.enemyIllust.active = false;
-                // [최적화] HP바 제거
                 this.enemyHpBarBG.destroy();
                 this.enemyHpBarFill.destroy();
                 
@@ -351,7 +353,6 @@ class CombatScene extends Phaser.Scene {
         this.combatRunning = false;
         this.add.text(400, 300, 'YOU DIED', { fontSize: '48px', fill: '#ff0000' }).setOrigin(0.5);
         this.heroIllust.active = false;
-        // [최적화] HP바 제거
         this.heroHpBarBG.destroy();
         this.heroHpBarFill.destroy();
         
@@ -361,7 +362,7 @@ class CombatScene extends Phaser.Scene {
     }
 }
 
-// --- 3. UI 씬 --- (오류 수정 및 최적화)
+// --- 3. UI 씬 --- (v5.1과 동일, 버그 수정됨)
 class UIScene extends Phaser.Scene {
     constructor() {
         super('UIScene');
@@ -369,13 +370,11 @@ class UIScene extends Phaser.Scene {
         this.equipSlots = {};
         this.inventory = [];
         
-        // [최적화] UI 레이아웃 상수 정의
         this.UI_WIDTH = 190;
         this.UI_START_X = 800 - this.UI_WIDTH;
         this.UI_PADDING = 10;
         this.TOP_UI_HEIGHT = 50;
         
-        // 폰트 스타일
         this.labelStyle = { fontSize: '11px', fill: '#cccccc', align: 'center' };
         this.inventoryLabelStyle = { fontSize: '14px', fill: '#cccccc', align: 'left' };
         this.hpStaTextStyle = { fontSize: '12px', fill: '#ffffff' };
@@ -384,7 +383,6 @@ class UIScene extends Phaser.Scene {
     create() {
         this.add.graphics().fillStyle(0x000000).fillRect(0, 0, 800, 576);
 
-        // 상단 UI 프레임
         this.add.graphics().fillStyle(0x666666).fillRect(0, 0, 800, this.TOP_UI_HEIGHT); 
         this.add.text(10, 15, '시간의 흐름', { fontSize: '10px', fill: '#000000' });
         this.dayText = this.add.text(80, 15, 'Day: 1', { fontSize: '14px', fill: '#000000' });
@@ -392,18 +390,15 @@ class UIScene extends Phaser.Scene {
         this.add.text(300, 15, '게임 UI 화면', { fontSize: '10px', fill: '#000000' });
         this.add.text(450, 15, '몇 번째 루프인지 표시', { fontSize: '10px', fill: '#000000' });
 
-        // 우측 UI 프레임
         this.add.graphics().fillStyle(0x333333).fillRect(this.UI_START_X, 0, this.UI_WIDTH, 576);
         
-        // HP/STA 텍스트와 바
         const RIGHT_UI_START_X = this.UI_START_X + this.UI_PADDING;
         let currentY = this.TOP_UI_HEIGHT + this.UI_PADDING;
         
         this.heroHpText = this.add.text(RIGHT_UI_START_X, currentY, 'HP: 100/100', this.hpStaTextStyle);
         currentY += 18;
         
-        // [최적화] HP바를 Rectangle로 생성
-        this.hpBarWidth = this.UI_WIDTH - (this.UI_PADDING * 2) - 20; // 160
+        this.hpBarWidth = this.UI_WIDTH - (this.UI_PADDING * 2) - 20;
         this.hpBarHeight = 8;
         this.heroHpBarBG = this.add.rectangle(RIGHT_UI_START_X, currentY, this.hpBarWidth, this.hpBarHeight, 0xff0000).setOrigin(0);
         this.heroHpBarFill = this.add.rectangle(RIGHT_UI_START_X, currentY, this.hpBarWidth, this.hpBarHeight, 0x00ff00).setOrigin(0);
@@ -412,7 +407,6 @@ class UIScene extends Phaser.Scene {
         this.add.text(RIGHT_UI_START_X, currentY, 'STA: 100/100', { fontSize: '12px', fill: '#00ffff' }); 
         currentY += 30;
 
-        // 장비 슬롯
         const EQUIP_SLOT_SIZE = 36;
         const EQUIP_SLOT_GAP_X = 5;
         const EQUIP_SLOT_GAP_Y = 10;
@@ -437,7 +431,6 @@ class UIScene extends Phaser.Scene {
         this.equipSlots['boots']  = this.createSlot(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY + 15, 'boots', EQUIP_SLOT_SIZE);
         currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10;
 
-        // 능력치
         this.add.text(RIGHT_UI_START_X + 10, currentY, '능력치', this.inventoryLabelStyle);
         currentY += 20;
         this.add.text(RIGHT_UI_START_X + 10, currentY, '피해: +X', this.hpStaTextStyle);
@@ -445,7 +438,6 @@ class UIScene extends Phaser.Scene {
         this.add.text(RIGHT_UI_START_X + 10, currentY, '방어: +Y', this.hpStaTextStyle);
         currentY += 25;
 
-        // 인벤토리 (4x4)
         this.add.text(RIGHT_UI_START_X + 10, currentY, 'Inventory', this.inventoryLabelStyle); 
         currentY += 20;
 
@@ -475,23 +467,21 @@ class UIScene extends Phaser.Scene {
         this.scene.get('GameScene').events.on('updateHeroHP', this.updateHeroHP, this);
         this.events.on('addItem', this.addItem, this);
         
-        this.updateHeroHP(100, 100); // 초기 HP바 그리기
+        this.updateHeroHP(100, 100); 
     }
     
-    // [최적화] HP바 업데이트 로직
     updateHeroHP(hp, maxHp) {
-        if (!this.scene.isActive()) return;
+        if (!this.scene.isActive()) return; // 씬이 활성화(wake) 상태일 때만 업데이트
         this.heroHpText.setText(`HP: ${hp}/${maxHp}`);
         const percent = Math.max(0, hp / maxHp);
-        this.heroHpBarFill.width = this.hpBarWidth * percent; // 너비만 조절
+        this.heroHpBarFill.width = this.hpBarWidth * percent;
     }
     
-    // [오류 수정] Graphics가 아닌 Rectangle을 반환하도록 수정
     createSlot(x, y, key, size = 40) {
         const slot = this.add.rectangle(x, y, size, size)
             .setOrigin(0)
-            .setFillStyle(0x333333) // 짙은 회색 배경
-            .setStrokeStyle(1, 0x666666); // 밝은 회색 테두리
+            .setFillStyle(0x333333) 
+            .setStrokeStyle(1, 0x666666);
             
         slot.setData('slotKey', key);
         slot.setInteractive();
@@ -500,7 +490,7 @@ class UIScene extends Phaser.Scene {
     }
     
     onSlotClick(slot) {
-        const slotKey = slot.getData('slotKey'); // 이제 정상 작동
+        const slotKey = slot.getData('slotKey');
         if (this.selectedItemIndex !== null) {
             const itemKey = this.inventory[this.selectedItemIndex];
             if (!itemKey) { 
@@ -572,7 +562,7 @@ class UIScene extends Phaser.Scene {
     }
 }
 
-// --- Phaser 게임 설정 --- (v5와 동일)
+// --- Phaser 게임 설정 --- (v5.1과 동일)
 const config = {
     type: Phaser.AUTO,
     width: 800,
