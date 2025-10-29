@@ -1,4 +1,4 @@
-// game.js (v7.4 - SyntaxError 최종 수정 - 재확인)
+// game.js (v7.5 - preload 및 CombatScene 수정)
 
 // --- 데이터 정의 --- (동일)
 const ItemData = {
@@ -27,7 +27,7 @@ const TILE_TYPE_ENEMY2 = 2;
 const TILE_TYPE_ENEMY3 = 3;
 const TILE_TYPE_ENEMY5 = 5;
 
-// --- 1. 메인 게임 씬 (필드 탐험) --- (v7.3과 동일)
+// --- 1. 메인 게임 씬 (필드 탐험) ---
 class GameScene extends Phaser.Scene {
     constructor() {
         super('GameScene');
@@ -50,17 +50,18 @@ class GameScene extends Phaser.Scene {
     }
 
     preload() {
+        // [수정] ★★★ Base64 'pixel'만 로드 ★★★
         const pixelData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wcAAwAB/epA8AAAAABJRU5ErkJggg==';
-        if (!this.textures.exists('pixel')) {
+        if (!this.textures.exists('pixel')) { 
+            console.log("Loading base64 pixel data");
             this.textures.addBase64('pixel', pixelData);
+        } else {
+            console.log("'pixel' texture already exists");
         }
-        // 임시 텍스처 등록 (실제 그릴 때 'pixel' 사용)
-        if (!this.textures.exists('hero_illust')) this.textures.add('hero_illust', 0, 0, 1, 1); 
-        if (!this.textures.exists('goblin_illust')) this.textures.add('goblin_illust', 0, 0, 1, 1);
-        if (!this.textures.exists('skeleton_illust')) this.textures.add('skeleton_illust', 0, 0, 1, 1);
-        if (!this.textures.exists('orc_illust')) this.textures.add('orc_illust', 0, 0, 1, 1);
-        if (!this.textures.exists('demon_illust')) this.textures.add('demon_illust', 0, 0, 1, 1);
-        if (!this.textures.exists('slime_illust')) this.textures.add('slime_illust', 0, 0, 1, 1); 
+        
+        // [수정] ★★★ 잘못된 this.textures.add 호출 제거 ★★★
+        // if (!this.textures.exists('hero_illust')) this.textures.add('hero_illust', 0, 0, 1, 1); 
+        // ... (다른 illust들도 제거) ...
     }
 
     create() {
@@ -141,9 +142,9 @@ class GameScene extends Phaser.Scene {
             this.hero = this.physics.add.sprite(startPos.x, startPos.y, 'pixel').setDisplaySize(this.TILE_SIZE * 0.5, this.TILE_SIZE * 0.75).setTint(0x00ffff);
             this.hero.hp = this.heroData.hp;
             this.hero.maxHp = this.heroData.maxHp;
-            if (!this.physics.world.overlap(this.hero, this.enemyTriggers)) { // overlap 이미 존재하는지 확인 (정확X)
-                this.physics.add.overlap(this.hero, this.enemyTriggers, this.onMeetEnemy, null, this);
-            }
+            
+            // overlap은 딱 한 번만 추가
+            this.physics.add.overlap(this.hero, this.enemyTriggers, this.onMeetEnemy, null, this);
             
         } else if (this.hero && this.pathCoordsWithOffset.length > 0) { 
              console.log("GameScene repositioning hero");
@@ -299,7 +300,7 @@ class GameScene extends Phaser.Scene {
              
              segmentPathPoints.forEach(p => {
                  if (!this.grid[p.y]) this.grid[p.y] = []; 
-                 if(p.x >= 0 && p.x < this.GRID_WIDTH && p.y >= 0 && p.y < this.GRID_HEIGHT && this.grid[p.y][p.x] === TILE_TYPE_EMPTY) { // 범위 체크 및 비어있을 때만
+                 if(p.x >= 0 && p.x < this.GRID_WIDTH && p.y >= 0 && p.y < this.GRID_HEIGHT && this.grid[p.y][p.x] === TILE_TYPE_EMPTY) { 
                     this.grid[p.y][p.x] = TILE_TYPE_PATH;
                  }
              });
@@ -327,7 +328,7 @@ class GameScene extends Phaser.Scene {
                  if (index === undefined) break;
                  const coord = this.pathCoords[index];
                 
-                 if (coord && coord.y >= 0 && coord.y < this.GRID_HEIGHT && coord.x >= 0 && coord.x < this.GRID_WIDTH && // 범위 체크
+                 if (coord && coord.y >= 0 && coord.y < this.GRID_HEIGHT && coord.x >= 0 && coord.x < this.GRID_WIDTH && 
                      this.grid[coord.y] && this.grid[coord.y][coord.x] === TILE_TYPE_PATH) {
                      if (count2 < 2) {
                         this.grid[coord.y][coord.x] = TILE_TYPE_ENEMY2;
@@ -421,8 +422,8 @@ class GameScene extends Phaser.Scene {
             const tileY = coord.y * this.TILE_SIZE + this.MAP_OFFSET_Y;
             
              let tileType = TILE_TYPE_PATH; 
-             if (coord.y >= 0 && coord.y < this.grid.length && // y 범위 체크
-                 coord.x >= 0 && coord.x < (this.grid[coord.y]?.length || 0) && // x 범위 체크
+             if (coord.y >= 0 && coord.y < this.grid.length && 
+                 coord.x >= 0 && coord.x < (this.grid[coord.y]?.length || 0) && 
                  this.grid[coord.y][coord.x] !== undefined)
              {
                  tileType = this.grid[coord.y][coord.x];
@@ -608,7 +609,7 @@ class GameScene extends Phaser.Scene {
             this.redraw(this.scale.gameSize); 
         }
     }
-}
+} // End of GameScene class
 
 // --- 2. 전투 씬 --- (v7.1과 동일)
 class CombatScene extends Phaser.Scene {
@@ -785,9 +786,9 @@ class CombatScene extends Phaser.Scene {
             this.endCombat(null); 
         }, [], this);
     }
-}
+} // End of CombatScene class
 
-// --- 3. UI 씬 --- (v7.3과 동일 - 최종 오류 수정)
+// --- 3. UI 씬 --- (v7.3과 동일)
 class UIScene extends Phaser.Scene {
     constructor() {
         super('UIScene');
@@ -1068,17 +1069,15 @@ class UIScene extends Phaser.Scene {
         }
     }
     
-    // [수정] ★★★ showError 함수의 닫는 중괄호 } 를 추가 ★★★
+    // [수정] ★★★ showError 함수의 닫는 중괄호 } 를 추가 (재확인) ★★★
     showError(message) {
         if (this.errorText) {
             this.errorText.setText(message);
             if (this.scene.isActive()) {
                 this.time.delayedCall(2000, () => {
-                    // delayedCall 콜백 내에서도 errorText 존재 확인
                     if(this.errorText) this.errorText.setText(''); 
                 });
              } else {
-                 // 씬 비활성 시 바로 지우거나 로그만 남김
                  if(this.errorText) this.errorText.setText(''); 
                  console.warn("showError called while UIScene is inactive:", message);
              }
@@ -1105,4 +1104,4 @@ const config = {
 // 게임 인스턴스 생성
 const game = new Phaser.Game(config);
 
-// --- 파일 끝 --- (여기까지 확실히 복사되어야 합니다)
+// --- 파일 끝 ---
