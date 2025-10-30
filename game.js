@@ -1,4 +1,4 @@
-// game.js (v8.5 - '일시 중지 중 게임 오버' 시 재시작 오류 수정)
+// game.js (v8.7 - v8.6 오타 및 코드 잘림 수정)
 
 // --- 데이터 정의 --- (동일)
 const ItemData = {
@@ -68,31 +68,21 @@ class GameScene extends Phaser.Scene {
         }
         this.input.keyboard.on('keydown-SPACE', this.togglePause, this);
         
-        // [참고] 만약 '언제든' R키로 재시작 기능을 원한다면 아래 주석을 해제하세요.
-        // this.input.keyboard.on('keydown-R', this.restartGame, this);
+this.input.keyboard.on('keydown-R', this.restartGame, this);
 
         console.log("GameScene create end");
     }
     
-    // [추가] ★★★ 재시작 시 리스너 정리를 위한 셧다운 함수 ★★★ (v8.4와 동일)
+    // (v8.4와 동일)
     shutdown() {
         console.log("GameScene shutdown");
-        // 전역 리스너 제거
         this.scale.off('resize', this.redraw, this);
-        // 씬 이벤트 리스너 제거
         this.events.off('combatComplete', this.onCombatComplete, this);
-        // 키보드 리스너 제거
         this.input.keyboard.off('keydown-SPACE', this.togglePause, this);
-        this.input.keyboard.off('keydown-R', this.restartGame, this); // (게임오버 또는 create 시 등록됐을 수 있음)
-
-        // 타이머 제거
+        this.input.keyboard.off('keydown-R', this.restartGame, this); 
         this.time.removeAllEvents();
-        
-        // 그룹 파괴
         if (this.enemyTriggers) this.enemyTriggers.destroy(true);
         if (this.mapGraphics) this.mapGraphics.destroy(true);
-        
-        // 참조 초기화 (선택적이지만 권장)
         this.hero = null;
         this.mapGraphics = null;
         this.enemyTriggers = null;
@@ -103,14 +93,14 @@ class GameScene extends Phaser.Scene {
         this.registry.set('isPaused', newState); console.log("Pause Toggled:", newState);
     }
 
-    // (v8.4와 동일: redraw, calculateMapOffsets, update, generateRandomLoop, setGrid, getPathNeighbors, generateDefaultLoop, assignSpecialTiles, updatePathCoordsWithOffset, drawTiles)
+    // (v8.4와 동일)
     redraw(gameSize) {
         console.log("GameScene redraw start", gameSize);
         if (!this.pathCoords || this.pathCoords.length === 0) { console.warn("GameScene redraw skipped: pathCoords is invalid."); return; }
         const gameWidth = gameSize ? gameSize.width : this.cameras.main.width; const gameHeight = gameSize ? gameSize.height : this.cameras.main.height;
         if (gameWidth <= 1 || gameHeight <= 1) { console.warn("GameScene redraw skipped due to invalid size:", gameWidth, gameHeight); return; }
 
-        if (this.mapGraphics) this.mapGraphics.clear(true, true); // [수정] null 체크
+        if (this.mapGraphics) this.mapGraphics.clear(true, true); 
         this.calculateMapOffsets(gameWidth, gameHeight);
         this.drawTiles(gameWidth, gameHeight);
         this.updatePathCoordsWithOffset();
@@ -212,7 +202,7 @@ class GameScene extends Phaser.Scene {
         do {
             this.pathCoords.push({ ...current });
             const neighbors = this.getPathNeighbors(current.x, current.y);
-            let next = null;
+      *        let next = null;
             if (neighbors.length !== 2 && !(current.x === startX && current.y === startY && neighbors.length > 0)) { 
                  console.error(`Path generation error: Invalid neighbor count (${neighbors.length}) at`, current);
                   this.generateDefaultLoop();
@@ -272,7 +262,8 @@ class GameScene extends Phaser.Scene {
         const loopSize = 5; const startX = 5, startY = 5;
         for (let x = startX; x <= startX + loopSize; x++) { this.setGrid(x, startY, TILE_TYPE_PATH); this.pathCoords.push({ x: x, y: startY }); }
         for (let y = startY + 1; y <= startY + loopSize; y++) { this.setGrid(startX + loopSize, y, TILE_TYPE_PATH); this.pathCoords.push({ x: startX + loopSize, y: y }); }
-        for (let x = startX + loopSize - 1; x >= startX; x--) { this.setGrid(x, startY + loopSize, TILE_TYPE_PATH); this.pathCoords.push({ x: x, y: startY + loopSize }); }
+        // [수정] ★★★ v8.5의 'e' 오타가 있던 줄. v8.7에서 수정됨 ★★★
+        for (let x = startX + loopSize - 1; x >= startX; x--) { this.setGrid(x, startY + loopSize, TILE_TYPE_PATH); this.pathCoords.push({ x: x, y: startY + loopSize }); }
         for (let y = startY + loopSize - 1; y > startY; y--) { this.setGrid(startX, y, TILE_TYPE_PATH); this.pathCoords.push({ x: startX, y: y }); }
          this.setGrid(startX, startY, TILE_TYPE_START);
     }
@@ -292,7 +283,7 @@ class GameScene extends Phaser.Scene {
                      this.grid[coord.y][coord.x] = type;
                      this.specialTileCoords[type].push(coord);
                      placed++;
-                 }
+            _      }
              }
              if (placed < count) console.warn(`Could only place ${placed}/${count} tiles of type ${type}.`);
          };
@@ -331,7 +322,7 @@ class GameScene extends Phaser.Scene {
         }
     }
     
-    // [수정] ★★★ 전투 시작 로직 변경 (v8.4와 동일) ★★★
+    // (v8.4와 동일)
     moveHero() {
         if (!this.hero || !this.hero.body || !this.pathCoordsWithOffset || this.pathCoordsWithOffset.length <= 1) return;
         if(this.pathIndex < 0 || this.pathIndex >= this.pathCoordsWithOffset.length) { this.pathIndex = 0; if (this.pathCoordsWithOffset.length === 0) return; }
@@ -385,8 +376,6 @@ class GameScene extends Phaser.Scene {
          }
          return false; 
     }
-    
-    // (v8.4와 동일: advanceDay, spawnEnemy1, spawnEnemy2, spawnEnemy3, spawnEnemy5, spawnEnemyTriggerAt, getPixelCoord, startCombat)
     advanceDay() {
         if (this.registry.get('isPaused')) return; 
         this.day++; this.tilesMovedSinceLastDay = 0; console.log(`Day ${this.day} started`);
@@ -400,7 +389,7 @@ class GameScene extends Phaser.Scene {
     }
     spawnEnemy2() { 
         this.specialTileCoords[TILE_TYPE_ENEMY2].forEach(coord => { const spawnPos = this.getPixelCoord(coord); if(spawnPos) this.spawnEnemyTriggerAt('skeleton', spawnPos.x, spawnPos.y); });
-all     }
+    }
     spawnEnemy3() { 
         this.specialTileCoords[TILE_TYPE_ENEMY3].forEach(coord => { const spawnPos = this.getPixelCoord(coord); if(spawnPos) this.spawnEnemyTriggerAt('orc', spawnPos.x, spawnPos.y); });
     }
@@ -450,12 +439,11 @@ all     }
         this.scene.launch('CombatScene', combatData);
     }
     
-    // [수정] ★★★ v8.5 변경점 ★★★
+    // [수정] ★★★ v8.5의 재시작 버그 수정 로직 (v8.7에 유지) ★★★
     onCombatComplete(data) {
         this.startingCombat = false; 
         
         if (!this.hero) { 
-             // (재시작 실패 후) hero가 null인 상태에서 R키 리스너 중복 등록 방지
              if(!this.input.keyboard.hasListeners('keydown-R')){
                  this.input.keyboard.on('keydown-R', this.restartGame, this);
              }
@@ -476,7 +464,7 @@ all     }
         
         if (this.hero.hp <= 0) {
             // [수정] ★★★ 'R'키가 작동하도록 씬을 'active' 상태로 변경 ★★★
-            this.scene.resume('GameScene');
+            this.scene.resume('GameScene'); 
 
             this.hero.destroy(); 
             this.hero = null; 
@@ -493,7 +481,7 @@ all     }
         }
     }
     
-    // (v8.4와 동일: restartGame)
+    // (v8.4와 동일)
     restartGame(event) {
          if (!this.scene.isActive()) return; 
         
@@ -507,7 +495,7 @@ all     }
     }
 } // End of GameScene class
 
-// --- 2. 전투 씬 --- (v8.4와 동일)
+// --- 2. 전투 씬 --- (v8.4와 동일, v8.6 오타 제거)
 class CombatScene extends Phaser.Scene {
     constructor() {
         super('CombatScene');
@@ -526,7 +514,7 @@ class CombatScene extends Phaser.Scene {
         this.enemyIllusts = []; this.enemyHps = []; this.enemyMaxHps = [];
         this.enemyAttackGauges = []; this.enemyAttackSpeeds = [];
         this.enemyHpBarBGs = []; this.enemyHpBarFills = [];
-        this.enemyAttackGaugeBGs = []; this.enemyAttackGaugeFills = [];
+      _   this.enemyAttackGaugeBGs = []; this.enemyAttackGaugeFills = [];
         this.enemiesData.forEach(enemyData => {
              this.enemyHps.push(enemyData.hp);
              this.enemyMaxHps.push(enemyData.hp);
@@ -581,7 +569,7 @@ class CombatScene extends Phaser.Scene {
     toggleGamePause() {
         const gameScene = this.scene.get('GameScene');
         if (gameScene) {
-             gameScene.togglePause(); 
+             gameScene.togglePause();
         }
     }
     update(time, delta) {
@@ -608,7 +596,7 @@ class CombatScene extends Phaser.Scene {
     updateHpBars() {
         const barWidth = 100;
         const heroPercent = Math.max(0, this.heroHp / this.heroMaxHp);
-        if(this.heroHpBarFill) this.heroHpBarFill.width = barWidth * heroPercent;E 
+        if(this.heroHpBarFill) this.heroHpBarFill.width = barWidth * heroPercent;
         this.enemiesData.forEach((enemyData, index) => {
              const enemyPercent = Math.max(0, this.enemyHps[index] / this.enemyMaxHps[index]);
              if (this.enemyHpBarFills[index]) {
@@ -649,7 +637,7 @@ class CombatScene extends Phaser.Scene {
                 if (!this.combatRunning) return; 
                 this.enemyHps[targetIndex] -= 10; 
                 this.updateHpBars(); 
-                if (this.enemyHps[targetIndex] <= 0) { 
+                if (this.enemyHps[targetIndex] <= 0) {
                     this.defeatEnemy(targetIndex); 
                 } 
             }
@@ -660,20 +648,23 @@ class CombatScene extends Phaser.Scene {
         const enemyIllust = this.enemyIllusts[index];
         const enemyAtk = this.enemiesData[index].atk;
         this.add.tween({ 
-            targets: enemyIllust, 
+            targets: enemyIllust,s 
             x: enemyIllust.x - 20, 
             duration: 100, ease: 'Power1', yoyo: true,
             onComplete: () => {
                 if (!this.combatRunning) return; 
-                this.heroHp -= enemyAtk; 
+                this.heroHp -= enemyAtk;
                 this.updateHpBars(); 
                 if (this.heroHp <= 0) { this.defeatHero(); }
             }
         });
     }
     defeatEnemy(index) {
+        // [수정] ★★★ v8.6에서 이 부분이 잘렸습니다. v8.7에서 복구. ★★★
         if (!this.enemyIllusts[index] || !this.enemyIllusts[index].active) return; 
+        
         const enemyIllust = this.enemyIllusts[index];
+        
         this.add.tween({ 
             targets: enemyIllust, 
             alpha: 0, 
@@ -683,15 +674,17 @@ class CombatScene extends Phaser.Scene {
                 if(this.enemyHpBarBGs[index]) this.enemyHpBarBGs[index].setVisible(false);
                 if(this.enemyHpBarFills[index]) this.enemyHpBarFills[index].setVisible(false);
                 if(this.enemyAttackGaugeBGs[index]) this.enemyAttackGaugeBGs[index].setVisible(false);
-al               if(this.enemyAttackGaugeFills[index]) this.enemyAttackGaugeFills[index].setVisible(false);
+                if(this.enemyAttackGaugeFills[index]) this.enemyAttackGaugeFills[index].setVisible(false);
+                
                 let loot = null;
                 const allEnemiesDefeated = this.enemyHps.every(hp => hp <= 0);
+                
                 if (allEnemiesDefeated) {
                      this.combatRunning = false; 
                     console.log("All enemies defeated!");
                      if (Math.random() < this.enemiesData[index].dropRate) {
-em                       loot = Phaser.Math.RND.pick(ALL_ITEM_KEYS);
-                     }
+                         loot = Phaser.Math.RND.pick(ALL_ITEM_KEYS);
+        _            }
                     if (loot) this.dropItemAnimation(loot, enemyIllust.x, enemyIllust.y);
                     else this.endCombat(null);
                 } 
@@ -701,7 +694,7 @@ em                       loot = Phaser.Math.RND.pick(ALL_ITEM_KEYS);
     dropItemAnimation(itemKey, x, y) { 
         const itemData = ItemData[itemKey]; 
         const itemIcon = this.add.rectangle(x, y, 20, 20, itemData.color);
-        const inventoryCenterSlotX = this.cameras.main.width - 190 + 50; 
+em       const inventoryCenterSlotX = this.cameras.main.width - 190 + 50; 
         const inventoryCenterSlotY = 415;
         this.add.tween({ targets: itemIcon, x: inventoryCenterSlotX, y: inventoryCenterSlotY, duration: 700, ease: 'Back.easeIn',
             onComplete: () => { itemIcon.destroy(); this.endCombat(itemKey); }
@@ -721,7 +714,7 @@ em                       loot = Phaser.Math.RND.pick(ALL_ITEM_KEYS);
         if (!this.combatRunning) return; 
         this.combatRunning = false;
         this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2, 'YOU DIED', { fontSize: '48px', fill: '#ff0000' }).setOrigin(0.5);
-        this.heroIllust.active = false; 
+A       this.heroIllust.active = false; 
         if(this.heroHpBarBG) this.heroHpBarBG.destroy(); 
         if(this.heroHpBarFill) this.heroHpBarFill.destroy(); 
         if(this.heroAttackGaugeBG) this.heroAttackGaugeBG.destroy(); 
@@ -757,14 +750,14 @@ class UIScene extends Phaser.Scene {
              const gameScene = this.scene.get('GameScene'); 
              if (gameScene && gameScene.events) {
                 gameScene.events.on('updateDay', this.onUpdateDay, this);
-                this.events.on('updateHeroHP', this.updateHeroHP, this); 
+s               this.events.on('updateHeroHP', this.updateHeroHP, this); 
                 if (gameScene.registry && gameScene.registry.events) {
                     console.log("UIScene attaching registry listener");
                     gameScene.registry.events.on('changedata-isPaused', this.updatePauseText, this); 
                     this.updatePauseText(); 
                 } else {
                      console.warn("UIScene create: GameScene registry not ready for pause listener after delay.");
-                }
+E             }
              } else {
                  console.warn("UIScene create: GameScene not ready for event listeners after delay.");
              }
@@ -867,4 +860,3 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
-
