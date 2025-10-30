@@ -1,17 +1,13 @@
-// game.js (v8.3 - 치명적인 함수 스코프 오류 수정)
+// game.js (v8.3 - 루프 알고리즘 변경, 전투 조건/배치/종료, 재시작 수정)
 
 // --- 데이터 정의 --- (동일)
 const ItemData = {
-    'sword':    { name: '검', type: 'weapon', color: 0x8B4513 },
-    'shield':   { name: '방패', type: 'shield', color: 0x8B4513 },
-    'helmet':   { name: '투구', type: 'helmet', color: 0x8B4513 },
-    'armor':    { name: '갑옷', type: 'armor', color: 0x8B4513 },
-    'gloves':   { name: '장갑', type: 'gloves', color: 0x8B4513 },
-    'belt':     { name: '허리띠', type: 'belt',   color: 0x8B4513 },
+    'sword':    { name: '검', type: 'weapon', color: 0x8B4513 }, 'shield':   { name: '방패', type: 'shield', color: 0x8B4513 },
+    'helmet':   { name: '투구', type: 'helmet', color: 0x8B4513 }, 'armor':    { name: '갑옷', type: 'armor', color: 0x8B4513 },
+    'gloves':   { name: '장갑', type: 'gloves', color: 0x8B4513 }, 'belt':     { name: '허리띠', type: 'belt',   color: 0x8B4513 },
     'boots':    { name: '장화', type: 'boots',  color: 0x8B4513 }
 };
 const ALL_ITEM_KEYS = Object.keys(ItemData);
-
 const EnemyData = {
     'goblin':   { name: '고블린', hp: 30, atk: 5, color: 0x00aa00, dropRate: 0.10, illustKey: 'goblin_illust', attackTime: 1.0 },
     'skeleton': { name: '해골',   hp: 50, atk: 3, color: 0xeeeeee, dropRate: 0.15, illustKey: 'skeleton_illust', attackTime: 1.0 },
@@ -20,213 +16,255 @@ const EnemyData = {
     'slime':    { name: '슬라임', hp: 20, atk: 2, color: 0x00ffff, dropRate: 0.05, illustKey: 'slime_illust',    attackTime: 1.0 }
 };
 const SPAWNABLE_ENEMY_KEYS = ['goblin', 'skeleton', 'orc', 'slime'];
-
-const TILE_TYPE_EMPTY = 0;
-const TILE_TYPE_PATH = 1;
-const TILE_TYPE_ENEMY2 = 2;
-const TILE_TYPE_ENEMY3 = 3;
-const TILE_TYPE_ENEMY5 = 5;
-const TILE_TYPE_START = 6;
+const TILE_TYPE_EMPTY = 0; const TILE_TYPE_PATH = 1; const TILE_TYPE_ENEMY2 = 2;
+const TILE_TYPE_ENEMY3 = 3; const TILE_TYPE_ENEMY5 = 5; const TILE_TYPE_START = 6;
 
 // --- 1. 메인 게임 씬 (필드 탐험) ---
 class GameScene extends Phaser.Scene {
     constructor() {
         super('GameScene');
-        this.TILE_SIZE = 48; 
-        this.TOP_UI_HEIGHT = 50; 
-        this.RIGHT_UI_WIDTH = 190;
-        this.GRID_WIDTH = 25; 
-        this.GRID_HEIGHT = 18; 
-        
-        this.MAP_OFFSET_X = 0; 
-        this.MAP_OFFSET_Y = 0;
-        this.mapGraphics = null;
-        this.hero = null;
-        this.pathCoords = []; 
-        this.pathCoordsWithOffset = []; 
-        this.grid = []; 
+        this.TILE_SIZE = 48; this.TOP_UI_HEIGHT = 50; this.RIGHT_UI_WIDTH = 190;
+        this.GRID_WIDTH = 25; this.GRID_HEIGHT = 18;
+        this.MAP_OFFSET_X = 0; this.MAP_OFFSET_Y = 0; this.mapGraphics = null; this.hero = null;
+        this.pathCoords = []; this.pathCoordsWithOffset = []; this.grid = [];
         this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] };
-        this.tilesMovedSinceLastDay = 0;
-        this.isInitialDrawComplete = false; 
-        this.startingCombat = false; 
+        this.tilesMovedSinceLastDay = 0; this.isInitialDrawComplete = false; this.startingCombat = false;
     }
 
     preload() {
         const pixelData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wcAAwAB/epA8AAAAABJRU5ErkJggg==';
-        if (!this.textures.exists('pixel')) { 
-            this.textures.addBase64('pixel', pixelData);
-        }
+        if (!this.textures.exists('pixel')) { this.textures.addBase64('pixel', pixelData); }
     }
 
     create() {
         console.log("GameScene create start");
-        this.scene.run('UIScene'); 
-        
+        this.scene.run('UIScene');
         this.registry.set('isPaused', false);
+        this.pathIndex = 0; this.day = 1; this.tilesMovedTotal = 0;
+        this.enemyTriggers = this.physics.add.group(); this.mapGraphics = this.add.group();
 
-        this.pathIndex = 0;
-        this.day = 1;
-        this.tilesMovedTotal = 0;
-        this.enemyTriggers = this.physics.add.group();
-        this.mapGraphics = this.add.group();
+        this.generateRandomLoop(); // 루프 경로 생성 (데이터만)
 
-        this.generateRandomLoop(); 
-        
         this.scale.on('resize', this.redraw, this);
         this.events.on('combatComplete', this.onCombatComplete, this);
-        
-        this.heroData = { hp: 100, maxHp: 100, attackTime: 0.8 }; 
-        
-        this.time.delayedCall(200, () => { 
+        this.heroData = { hp: 100, maxHp: 100, attackTime: 0.8 };
+
+        this.time.delayedCall(200, () => {
              const uiScene = this.scene.get('UIScene');
              if (uiScene && this.scene.isActive('UIScene')) {
                 uiScene.events.emit('updateHeroHP', this.heroData.hp, this.heroData.maxHp);
-             } else {
-                 console.warn("UIScene not active or ready for initial events.");
-             }
+             } else { console.warn("UIScene not active or ready for initial events."); }
         });
 
         console.log("GameScene calling initial redraw");
         if (this.pathCoords && this.pathCoords.length > 0) {
-            this.time.delayedCall(50, () => { 
-                 console.log("Executing delayed initial redraw for GameScene");
-                this.redraw(this.scale.gameSize); 
-            }, [], this);
+            this.time.delayedCall(50, () => { console.log("Executing delayed initial redraw for GameScene"); this.redraw(this.scale.gameSize); }, [], this);
         } else {
             console.error("Initial redraw skipped: pathCoords is invalid after generation!");
-             this.generateDefaultLoop(); 
-             this.assignSpecialTiles(); 
+             this.generateDefaultLoop(); this.assignSpecialTiles();
              if (this.pathCoords && this.pathCoords.length > 0) {
-                  this.time.delayedCall(50, () => {
-                     console.log("Executing delayed fallback redraw for GameScene");
-                    this.redraw(this.scale.gameSize); 
-                }, [], this);
-             } else {
-                 console.error("FATAL: Failed to generate even default loop!");
-             }
+                  this.time.delayedCall(50, () => { console.log("Executing delayed fallback redraw for GameScene"); this.redraw(this.scale.gameSize); }, [], this);
+             } else { console.error("FATAL: Failed to generate even default loop!"); }
         }
-        
         this.input.keyboard.on('keydown-SPACE', this.togglePause, this);
-
         console.log("GameScene create end");
     }
-    
+
     togglePause() {
         const newState = !this.registry.get('isPaused');
-        this.registry.set('isPaused', newState); 
-        console.log("Pause Toggled:", newState);
+        this.registry.set('isPaused', newState); console.log("Pause Toggled:", newState);
     }
 
     redraw(gameSize) {
         console.log("GameScene redraw start", gameSize);
-        if (!this.pathCoords || this.pathCoords.length === 0) {
-            console.warn("GameScene redraw skipped: pathCoords is invalid.");
-            return; 
-        }
-
-        const gameWidth = gameSize ? gameSize.width : this.cameras.main.width;
-        const gameHeight = gameSize ? gameSize.height : this.cameras.main.height;
-        
-        if (gameWidth <= 1 || gameHeight <= 1) {
-             console.warn("GameScene redraw skipped due to invalid size:", gameWidth, gameHeight);
-            return;
-        }
+        if (!this.pathCoords || this.pathCoords.length === 0) { console.warn("GameScene redraw skipped: pathCoords is invalid."); return; }
+        const gameWidth = gameSize ? gameSize.width : this.cameras.main.width; const gameHeight = gameSize ? gameSize.height : this.cameras.main.height;
+        if (gameWidth <= 1 || gameHeight <= 1) { console.warn("GameScene redraw skipped due to invalid size:", gameWidth, gameHeight); return; }
 
         this.mapGraphics.clear(true, true);
-        
-        this.calculateMapOffsets(gameWidth, gameHeight); 
-        this.drawTiles(gameWidth, gameHeight); 
-        this.updatePathCoordsWithOffset(); 
-        
-        if (!this.hero && this.pathCoordsWithOffset.length > 0) { 
+        this.calculateMapOffsets(gameWidth, gameHeight);
+        this.drawTiles(gameWidth, gameHeight);
+        this.updatePathCoordsWithOffset();
+
+        if (!this.hero && this.pathCoordsWithOffset.length > 0) {
             console.log("GameScene creating hero");
-            const startPos = this.pathCoordsWithOffset[0];
-            if (!startPos) {
-                 console.error("Cannot create hero, start position is invalid!");
-                 return;
-            }
+            const startPos = this.pathCoordsWithOffset[0]; if (!startPos) { console.error("Cannot create hero, start position is invalid!"); return; }
             this.hero = this.physics.add.sprite(startPos.x, startPos.y, 'pixel').setDisplaySize(this.TILE_SIZE * 0.5, this.TILE_SIZE * 0.75).setTint(0x00ffff);
-            this.hero.hp = this.heroData.hp;
-            this.hero.maxHp = this.heroData.maxHp;
-            this.physics.add.overlap(this.hero, this.enemyTriggers, this.checkEnemyOverlap, null, this);
-             this.hero.setDepth(1); 
-            
-        } else if (this.hero && this.pathCoordsWithOffset.length > 0) { 
+            this.hero.hp = this.heroData.hp; this.hero.maxHp = this.heroData.maxHp;
+            // [수정] overlap 콜백 제거 (moveHero에서 처리)
+            // this.physics.add.overlap(this.hero, this.enemyTriggers, this.checkEnemyOverlap, null, this);
+             this.hero.setDepth(1);
+
+        } else if (this.hero && this.pathCoordsWithOffset.length > 0) {
              console.log("GameScene repositioning hero");
-            const currentPos = this.pathCoordsWithOffset[this.pathIndex];
-             if (!currentPos) {
-                 console.error("Cannot reposition hero, current position is invalid!");
-                 return;
-             }
-            this.hero.setPosition(currentPos.x, currentPos.y);
-             this.hero.setDepth(1); 
-            if (this.hero.body) {
-                this.hero.body.reset(currentPos.x, currentPos.y); 
-            } else if (this.hero.active) { 
-                 console.log("Re-enabling physics body for hero");
-                this.physics.world.enable(this.hero);
-                if(this.hero.body) this.hero.body.reset(currentPos.x, currentPos.y);
-            }
+            const currentPos = this.pathCoordsWithOffset[this.pathIndex]; if (!currentPos) { console.error("Cannot reposition hero, current position is invalid!"); return; }
+            this.hero.setPosition(currentPos.x, currentPos.y); this.hero.setDepth(1);
+            if (this.hero.body) { this.hero.body.reset(currentPos.x, currentPos.y); }
+            else if (this.hero.active) { console.log("Re-enabling physics body for hero"); this.physics.world.enable(this.hero); if(this.hero.body) this.hero.body.reset(currentPos.x, currentPos.y); }
         }
-        this.isInitialDrawComplete = true; 
-        console.log("GameScene redraw end");
+        this.isInitialDrawComplete = true; console.log("GameScene redraw end");
     }
 
     calculateMapOffsets(gameWidth, gameHeight) {
-         if (!this.pathCoords || this.pathCoords.length === 0) {
-             this.MAP_OFFSET_X = (gameWidth - this.RIGHT_UI_WIDTH) / 2;
-             this.MAP_OFFSET_Y = this.TOP_UI_HEIGHT + (gameHeight - this.TOP_UI_HEIGHT) / 2;
-             console.warn("calculateMapOffsets using default center due to empty pathCoords.");
-             return;
-         }
-        
-         let sumX = 0, sumY = 0;
-         let validCoords = 0;
-         this.pathCoords.forEach(coord => {
-             if (coord && typeof coord.x === 'number' && typeof coord.y === 'number') {
-                sumX += coord.x;
-                sumY += coord.y;
-                validCoords++;
-             }
-         });
-
-         if (validCoords === 0) { 
-             this.MAP_OFFSET_X = (gameWidth - this.RIGHT_UI_WIDTH) / 2;
-             this.MAP_OFFSET_Y = this.TOP_UI_HEIGHT + (gameHeight - this.TOP_UI_HEIGHT) / 2;
-             console.warn("calculateMapOffsets using default center due to invalid pathCoords content.");
-             return;
-         }
-
-         const avgGridX = sumX / validCoords;
-         const avgGridY = sumY / validCoords;
-
-        const gameplayAreaWidth = gameWidth - this.RIGHT_UI_WIDTH;
-        const gameplayAreaHeight = gameHeight - this.TOP_UI_HEIGHT;
-        const gameplayCenterX = gameplayAreaWidth / 2;
-        const gameplayCenterY = this.TOP_UI_HEIGHT + (gameplayAreaHeight / 2);
-
-        const avgPixelX_noOffset = avgGridX * this.TILE_SIZE + this.TILE_SIZE / 2;
-        const avgPixelY_noOffset = avgGridY * this.TILE_SIZE + this.TILE_SIZE / 2;
-
-        this.MAP_OFFSET_X = gameplayCenterX - avgPixelX_noOffset;
-        this.MAP_OFFSET_Y = gameplayCenterY - avgPixelY_noOffset;
-
+         if (!this.pathCoords || this.pathCoords.length === 0) { this.MAP_OFFSET_X = (gameWidth - this.RIGHT_UI_WIDTH) / 2; this.MAP_OFFSET_Y = this.TOP_UI_HEIGHT + (gameHeight - this.TOP_UI_HEIGHT) / 2; console.warn("calculateMapOffsets using default center due to empty pathCoords."); return; }
+         let sumX = 0, sumY = 0; let validCoords = 0;
+         this.pathCoords.forEach(coord => { if (coord && typeof coord.x === 'number' && typeof coord.y === 'number') { sumX += coord.x; sumY += coord.y; validCoords++; } });
+         if (validCoords === 0) { this.MAP_OFFSET_X = (gameWidth - this.RIGHT_UI_WIDTH) / 2; this.MAP_OFFSET_Y = this.TOP_UI_HEIGHT + (gameHeight - this.TOP_UI_HEIGHT) / 2; console.warn("calculateMapOffsets using default center due to invalid pathCoords content."); return; }
+         const avgGridX = sumX / validCoords; const avgGridY = sumY / validCoords;
+        const gameplayAreaWidth = gameWidth - this.RIGHT_UI_WIDTH; const gameplayAreaHeight = gameHeight - this.TOP_UI_HEIGHT;
+        const gameplayCenterX = gameplayAreaWidth / 2; const gameplayCenterY = this.TOP_UI_HEIGHT + (gameplayAreaHeight / 2);
+        const avgPixelX_noOffset = avgGridX * this.TILE_SIZE + this.TILE_SIZE / 2; const avgPixelY_noOffset = avgGridY * this.TILE_SIZE + this.TILE_SIZE / 2;
+        this.MAP_OFFSET_X = gameplayCenterX - avgPixelX_noOffset; this.MAP_OFFSET_Y = gameplayCenterY - avgPixelY_noOffset;
          console.log(`Calculated Offsets: X=${this.MAP_OFFSET_X.toFixed(1)}, Y=${this.MAP_OFFSET_Y.toFixed(1)}`);
     }
 
     update(time, delta) {
-        if (this.registry.get('isPaused')) {
-             if (this.hero && this.hero.body) { this.hero.body.setVelocity(0, 0); }
-            return;
-        }
+        if (this.registry.get('isPaused')) { if (this.hero && this.hero.body) { this.hero.body.setVelocity(0, 0); } return; }
         if (!this.isInitialDrawComplete || !this.hero || !this.hero.active) return;
-        
-        if (!this.startingCombat) { 
-            this.moveHero();
-        }
+        if (!this.startingCombat) { this.moveHero(); }
     }
 
-    // [수정] ★★★ 보조 함수들을 클래스 메서드로 이동 ★★★
+    // [수정] ★★★ 단일 경로 루프 생성 (Recursive Backtracker 변형) v8.3 ★★★
+    generateRandomLoop() {
+        this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(TILE_TYPE_EMPTY));
+        this.pathCoords = [];
+        this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] };
+
+        const startX = Math.floor(this.GRID_WIDTH / 2);
+        const startY = Math.floor(this.GRID_HEIGHT / 2);
+        this.setGrid(startX, startY, TILE_TYPE_START); // 출발점 표시
+
+        let stack = [{ x: startX, y: startY }];
+        let visited = new Set([`${startX},${startY}`]);
+        let path = []; // 생성된 경로 (순서 없음)
+        path.push({x: startX, y: startY});
+
+        const targetLength = Phaser.Math.Between(30, 40);
+        let failsafe = 1000; // 무한 루프 방지
+
+        while (stack.length > 0 && path.length < targetLength && failsafe-- > 0) {
+            let current = stack[stack.length - 1];
+            let neighbors = [];
+
+            // 방문하지 않은 인접 셀 찾기 (벽 2칸 건너뛰기)
+            const directions = [[0, -2], [0, 2], [-2, 0], [2, 0]]; // 상하좌우 (2칸)
+            Phaser.Utils.Array.Shuffle(directions);
+
+            for (const [dx, dy] of directions) {
+                const nx = current.x + dx;
+                const ny = current.y + dy;
+
+                if (nx > 0 && nx < this.GRID_WIDTH - 1 && ny > 0 && ny < this.GRID_HEIGHT - 1 && !visited.has(`${nx},${ny}`)) {
+                    neighbors.push({ x: nx, y: ny, wallX: current.x + dx / 2, wallY: current.y + dy / 2 });
+                }
+            }
+
+            if (neighbors.length > 0) {
+                const next = neighbors[0];
+                // 벽 허물기 (중간 지점)
+                this.setGrid(next.wallX, next.wallY, TILE_TYPE_PATH);
+                path.push({x: next.wallX, y: next.wallY});
+
+                // 다음 셀로 이동
+                this.setGrid(next.x, next.y, TILE_TYPE_PATH);
+                path.push({x: next.x, y: next.y});
+                visited.add(`${next.x},${next.y}`);
+                stack.push({ x: next.x, y: next.y });
+            } else {
+                stack.pop(); // 막다른 길이면 후진
+            }
+        }
+         if (failsafe <= 0) console.warn("Maze generation timeout!");
+
+        // 마지막 지점에서 시작점까지 길 찾기 (A* or BFS - 여기서는 간단하게 직선 시도)
+        let lastPos = path[path.length-1];
+         if (lastPos && (lastPos.x !== startX || lastPos.y !== startY)) {
+             // 간단히는 마지막 지점과 시작점 사이의 벽을 허무는 시도 (복잡한 연결은 생략)
+             if (Math.abs(lastPos.x - startX) === 1 && lastPos.y === startY && this.grid[startY]?.[Math.min(lastPos.x, startX)] === TILE_TYPE_EMPTY) {
+                  this.setGrid(Math.min(lastPos.x, startX), startY, TILE_TYPE_PATH); path.push({x: Math.min(lastPos.x, startX), y: startY});
+             } else if (Math.abs(lastPos.y - startY) === 1 && lastPos.x === startX && this.grid[Math.min(lastPos.y, startY)]?.[startX] === TILE_TYPE_EMPTY) {
+                  this.setGrid(startX, Math.min(lastPos.y, startY), TILE_TYPE_PATH); path.push({x: startX, y: Math.min(lastPos.y, startY)});
+             }
+         }
+
+
+        // 3. 최종 경로 `pathCoords` 생성 (grid 시계방향 추적)
+        this.pathCoords = [];
+        let current = { x: startX, y: startY };
+        let cameFrom = null; // 직전에 방문한 타일 좌표
+
+        // 시작점의 첫 번째 이웃 찾기 (시계방향 우선: 우 -> 하 -> 좌 -> 상)
+        const startNeighbors = [];
+        if (this.grid[startY]?.[startX+1] >= TILE_TYPE_PATH) startNeighbors.push({x: startX+1, y: startY});
+        if (this.grid[startY+1]?.[startX] >= TILE_TYPE_PATH) startNeighbors.push({x: startX, y: startY+1});
+        if (this.grid[startY]?.[startX-1] >= TILE_TYPE_PATH) startNeighbors.push({x: startX-1, y: startY});
+        if (this.grid[startY-1]?.[startX] >= TILE_TYPE_PATH) startNeighbors.push({x: startX, y: startY-1});
+
+        if (startNeighbors.length < 2) { // 시작점에서 길이 2개가 아니면 오류
+             console.error("Loop start point is invalid after maze gen, neighbors:", startNeighbors.length);
+             this.generateDefaultLoop();
+             this.assignSpecialTiles();
+             return;
+        }
+        cameFrom = startNeighbors[0]; // 임의로 첫 번째 이웃을 이전 지점으로 설정
+
+        do {
+            this.pathCoords.push({ ...current });
+            const neighbors = this.getPathNeighbors(current.x, current.y);
+            let next = null;
+
+            if (neighbors.length !== 2 && !(current.x === startX && current.y === startY && neighbors.length > 0)) { // 시작점은 이웃이 여러개일수도 있음
+                 console.error(`Path generation error: Invalid neighbor count (${neighbors.length}) at`, current);
+                  this.generateDefaultLoop();
+                  this.assignSpecialTiles();
+                  return;
+            }
+
+            // 시계방향 우선 탐색 (현재 위치 기준: 우 -> 하 -> 좌 -> 상)
+             const searchOrder = [
+                 { x: current.x + 1, y: current.y }, // 우
+                 { x: current.x, y: current.y + 1 }, // 하
+                 { x: current.x - 1, y: current.y }, // 좌
+                 { x: current.x, y: current.y - 1 }  // 상
+             ];
+
+            for (const potentialNext of searchOrder) {
+                // 이웃이고, 직전에 온 길이 아니면 next로 설정
+                const isNeighbor = neighbors.some(n => n.x === potentialNext.x && n.y === potentialNext.y);
+                const isCameFrom = cameFrom && (potentialNext.x === cameFrom.x && potentialNext.y === cameFrom.y);
+                if (isNeighbor && !isCameFrom) {
+                    next = potentialNext;
+                    break;
+                }
+            }
+             
+             // 예외 처리: 시작점으로 돌아왔는데 next를 못찾는 경우 (시작점 이웃이 1개인 경우 등)
+             if (!next && current.x === startX && current.y === startY && this.pathCoords.length > 1) {
+                  break; // 루프 완성
+             } else if (!next) {
+                  console.error("Path trace error: Cannot find next clockwise step from", current);
+                  this.generateDefaultLoop();
+                  this.assignSpecialTiles();
+                  return;
+             }
+
+            cameFrom = { ...current };
+            current = { ...next };
+        } while ((current.x !== startX || current.y !== startY) && this.pathCoords.length <= (this.GRID_WIDTH * this.GRID_HEIGHT));
+
+        if (this.pathCoords.length < 10 || this.pathCoords.length > (this.GRID_WIDTH * this.GRID_HEIGHT)) {
+             console.warn("Final loop trace failed or invalid length, creating default loop.");
+             this.generateDefaultLoop();
+        }
+
+        // --- 특수 타일 지정 ---
+        this.assignSpecialTiles();
+
+        console.log("Final loop length:", this.pathCoords.length);
+        console.log("Final Special Tiles:", this.specialTileCoords);
+    }
+    
+    // [수정] grid 값 설정 (범위 체크 포함) - v8.2와 동일
     setGrid(x, y, value) {
          if (y >= 0 && y < this.GRID_HEIGHT && x >= 0 && x < this.GRID_WIDTH) {
              if (!this.grid[y]) this.grid[y] = [];
@@ -235,6 +273,7 @@ class GameScene extends Phaser.Scene {
          }
          return false;
     }
+    // [수정] 특정 좌표 주변의 경로 타일 좌표 배열 반환 (특수 타일 포함) - v8.2와 동일
     getPathNeighbors(x, y) {
         const neighbors = []; const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]; 
         for (const [dx, dy] of dirs) { const nx = x + dx; const ny = y + dy; if (this.grid[ny]?.[nx] >= TILE_TYPE_PATH) { neighbors.push({ x: nx, y: ny }); } }
@@ -244,7 +283,6 @@ class GameScene extends Phaser.Scene {
         console.log("Generating default loop...");
         this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(TILE_TYPE_EMPTY)); 
         this.pathCoords = [];
-        this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] }; 
         const loopSize = 5; const startX = 5, startY = 5;
         for (let x = startX; x <= startX + loopSize; x++) { this.setGrid(x, startY, TILE_TYPE_PATH); this.pathCoords.push({ x: x, y: startY }); }
         for (let y = startY + 1; y <= startY + loopSize; y++) { this.setGrid(startX + loopSize, y, TILE_TYPE_PATH); this.pathCoords.push({ x: startX + loopSize, y: y }); }
@@ -254,299 +292,82 @@ class GameScene extends Phaser.Scene {
     }
      assignSpecialTiles() {
          if (this.pathCoords.length <= 1) { console.warn("Cannot assign special tiles: Path is too short or empty."); return; }
-         
          const pathIndices = Array.from(Array(this.pathCoords.length).keys()); 
          pathIndices.shift(); // 시작점(0) 제외
          Phaser.Utils.Array.Shuffle(pathIndices); 
-
          this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] }; 
-
          const placeTile = (type, count) => {
              let placed = 0;
              while(placed < count && pathIndices.length > 0) {
                  const index = pathIndices.pop();
                  if (index === undefined) break;
                  const coord = this.pathCoords[index];
-                 if (coord && this.grid[coord.y]?.[coord.x] === TILE_TYPE_PATH) { this.grid[coord.y][coord.x] = type; this.specialTileCoords[type].push(coord); placed++; }
+                 // [수정] 출발점(START)이 아닌 일반 경로(PATH) 타일에만 배치
+                 if (coord && this.grid[coord.y]?.[coord.x] === TILE_TYPE_PATH) { 
+                     this.grid[coord.y][coord.x] = type;
+                     this.specialTileCoords[type].push(coord);
+                     placed++;
+                 }
              }
              if (placed < count) console.warn(`Could only place ${placed}/${count} tiles of type ${type}.`);
          };
-         
          placeTile(TILE_TYPE_ENEMY2, 2);
          placeTile(TILE_TYPE_ENEMY3, 3);
          placeTile(TILE_TYPE_ENEMY5, 1);
      }
-     
-    // [수정] ★★★ generateRandomLoop를 클래스 메서드로 정의 ★★★
-    generateRandomLoop() {
-        this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(TILE_TYPE_EMPTY));
-        this.pathCoords = []; // 최종 경로 저장
-        this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] };
-        
-        const minLoopSize = 5;
-        const maxLoopSize = 7;
-        const baseWidth = Phaser.Math.Between(minLoopSize, maxLoopSize);
-        const baseHeight = Phaser.Math.Between(minLoopSize, maxLoopSize);
-        const startX = Math.floor(this.GRID_WIDTH / 2 - baseWidth / 2);
-        const startY = Math.floor(this.GRID_HEIGHT / 2 - baseHeight / 2);
-
-        // 1. 기본 사각 루프 grid에 그리기
-        for (let x = startX; x <= startX + baseWidth; x++) this.setGrid(x, startY, TILE_TYPE_PATH);
-        for (let y = startY + 1; y <= startY + baseHeight; y++) this.setGrid(startX + baseWidth, y, TILE_TYPE_PATH);
-        for (let x = startX + baseWidth - 1; x >= startX; x--) this.setGrid(x, startY + baseHeight, TILE_TYPE_PATH);
-        for (let y = startY + baseHeight - 1; y >= startY; y--) this.setGrid(startX, y, TILE_TYPE_PATH);
-        this.setGrid(startX, startY, TILE_TYPE_START);
-
-        let currentLength = 2 * (baseWidth + baseHeight);
-        const targetDetours = Phaser.Math.Between(3, 4);
-        let detoursAdded = 0;
-        let detoursPerSide = { top: 0, right: 0, bottom: 0, left: 0 };
-        
-        const maxDeformation = 2;
-        let attempts = 30; 
-        
-        // 2. 경로 변형 시도
-        while (detoursAdded < targetDetours && attempts > 0) {
-            attempts--;
-            
-            const side = Phaser.Math.RND.pick(['top', 'right', 'bottom', 'left']);
-            if (detoursPerSide[side] >= 2) continue;
-
-            let candidates = [];
-            if (side === 'top') {
-                for (let x = startX + 1; x < startX + baseWidth; x++) if(this.getPathNeighbors(x, startY).length === 2) candidates.push({ x, y: startY });
-            } else if (side === 'right') {
-                for (let y = startY + 1; y < startY + baseHeight; y++) if(this.getPathNeighbors(startX + baseWidth, y).length === 2) candidates.push({ x: startX + baseWidth, y });
-            } else if (side === 'bottom') {
-                for (let x = startX + 1; x < startX + baseWidth; x++) if(this.getPathNeighbors(x, startY + baseHeight).length === 2) candidates.push({ x, y: startY + baseHeight });
-            } else { // left
-                for (let y = startY + 1; y < startY + baseHeight; y++) if(this.getPathNeighbors(startX, y).length === 2) candidates.push({ x: startX, y });
-            }
-            if (candidates.length === 0) continue;
-            
-            const pivot = Phaser.Math.RND.pick(candidates);
-            const neighbors = this.getPathNeighbors(pivot.x, pivot.y);
-            if (neighbors.length !== 2) continue; 
-            
-            const p1 = neighbors[0]; const p2 = neighbors[1];
-
-            let dx = 0, dy = 0;
-            let segmentDirX = 0, segmentDirY = 0;
-            if (p1.y === p2.y) { dy = Math.random() < 0.5 ? -1 : 1; segmentDirX = (p1.x < p2.x) ? 1 : -1; }
-            else { dx = Math.random() < 0.5 ? -1 : 1; segmentDirY = (p1.y < p2.y) ? 1 : -1; }
-            
-            const deformAmount = Phaser.Math.Between(1, 2); 
-            let detourPath = [];
-            let current = {...pivot};
-            let possible = true;
-
-            const isValid = (x, y) => { return x > 0 && x < this.GRID_WIDTH - 1 && y > 0 && y < this.GRID_HEIGHT - 1; };
-             const countPathNeighbors = (x, y) => {
-                 let count = 0;
-                 if (this.grid[y+1]?.[x] >= TILE_TYPE_PATH) count++;
-                 if (this.grid[y-1]?.[x] >= TILE_TYPE_PATH) count++;
-                 if (this.grid[y]?.[x+1] >= TILE_TYPE_PATH) count++;
-                 if (this.grid[y]?.[x-1] >= TILE_TYPE_PATH) count++;
-                 return count;
-            };
-
-            // 1. 밀어내기 (A 지점)
-            current.x += dx; current.y += dy;
-            if (!isValid(current.x, current.y) || this.grid[current.y][current.x] !== TILE_TYPE_EMPTY) possible = false;
-            else detourPath.push({...current}); // A
-
-            // 2. 평행 이동 (B 지점)
-            if (possible) {
-                current.x += segmentDirX; current.y += segmentDirY;
-                if (!isValid(current.x, current.y) || this.grid[current.y][current.x] !== TILE_TYPE_EMPTY) possible = false;
-                 else detourPath.push({...current}); // B
-            }
-            // 3. 복귀 (C 지점 - p2 위치)
-             if (possible) {
-                 current.x -= dx; current.y -= dy; 
-                 if (current.x !== p2.x || current.y !== p2.y) { 
-                     // 방향이 반대였는지 확인
-                     if (current.x === p1.x && current.y === p1.y) {
-                         // A -> B' -> P1 (B' = B의 반대방향)
-                         detourPath[1] = { x: detourPath[0].x - segmentDirX, y: detourPath[0].y - segmentDirY }; // B'
-                         current = detourPath[1];
-                         if (!isValid(current.x, current.y) || this.grid[current.y][current.x] !== TILE_TYPE_EMPTY) {
-                             possible = false;
-                         } else {
-                             // B'에서 p1으로 복귀
-                             current.x -= dx; current.y -= dy;
-                             if (current.x !== p1.x || current.y !== p1.y) {
-                                 possible = false;
-                             }
-                         }
-                     } else {
-                         possible = false; 
-                     }
-                 }
-             }
-
-             if (possible) {
-                 const A = detourPath[0];
-                 const B = detourPath[1];
-                 
-                 if (countPathNeighbors(A.x, A.y) > 0 || countPathNeighbors(B.x, B.y) > 0) possible = false;
-
-                 if (possible) {
-                     this.setGrid(pivot.x, pivot.y, TILE_TYPE_EMPTY); 
-                     this.setGrid(A.x, A.y, TILE_TYPE_PATH);
-                     this.setGrid(B.x, B.y, TILE_TYPE_PATH);
-                     
-                      if (countPathNeighbors(p1.x, p1.y) > 2 || countPathNeighbors(p2.x, p2.y) > 2) {
-                         possible = false;
-                     }
-                     
-                     if(!possible) {
-                          this.setGrid(pivot.x, pivot.y, TILE_TYPE_PATH); 
-                          this.setGrid(A.x, A.y, TILE_TYPE_EMPTY);
-                          this.setGrid(B.x, B.y, TILE_TYPE_EMPTY);
-                     } else {
-                          console.log("Detour added");
-                          detoursAdded++;
-                          detoursPerSide[side]++;
-                          currentLength += 2; 
-                     }
-                 }
-             }
-        } // end of while loop
-
-        // 3. 최종 경로 `pathCoords` 생성 (grid 따라가기)
-        this.pathCoords = [];
-        let current = { x: startX, y: startY };
-        let cameFrom = null; 
-
-         const startNeighbors = this.getPathNeighbors(startX, startY);
-         if (startNeighbors.length === 2) {
-             if (this.grid[startY]?.[startX-1] >= TILE_TYPE_PATH) cameFrom = { x: startX - 1, y: startY };
-             else if (this.grid[startY-1]?.[startX] >= TILE_TYPE_PATH) cameFrom = { x: startX, y: startY - 1};
-             else if (this.grid[startY]?.[startX+1] >= TILE_TYPE_PATH) cameFrom = { x: startX + 1, y: startY}; 
-             else cameFrom = startNeighbors[0]; 
-         } else {
-              console.error("Loop start point is invalid, neighbors:", startNeighbors.length);
-              this.generateDefaultLoop(); 
-              this.assignSpecialTiles();
-              return; 
-         }
-
-        do {
-            this.pathCoords.push({ ...current });
-            const neighbors = this.getPathNeighbors(current.x, current.y);
-            let next = null;
-
-            if (neighbors.length !== 2) {
-                if ((current.x === startX && current.y === startY) && this.pathCoords.length > 1) {
-                     break; 
-                } else {
-                     console.error(`Path generation error: Invalid neighbor count (${neighbors.length}) at`, current);
-                      this.generateDefaultLoop(); 
-                      this.assignSpecialTiles();
-                      return; 
-                }
-            } else {
-                if (cameFrom && neighbors[0].x === cameFrom.x && neighbors[0].y === cameFrom.y) {
-                    next = neighbors[1];
-                } else {
-                    next = neighbors[0];
-                }
-            }
-            cameFrom = { ...current };
-            current = { ...next };
-        } while ((current.x !== startX || current.y !== startY) && this.pathCoords.length <= (this.GRID_WIDTH * this.GRID_HEIGHT));
-        
-        if (this.pathCoords.length < 10 || this.pathCoords.length > (this.GRID_WIDTH * this.GRID_HEIGHT)) {
-             console.warn("Final loop trace failed or invalid length, creating default loop.");
-             this.generateDefaultLoop();
-        }
-        
-        // --- 특수 타일 지정 ---
-        this.assignSpecialTiles(); 
-
-        console.log("Final loop length:", this.pathCoords.length);
-        console.log("Final Special Tiles:", this.specialTileCoords);
-    }
     
     updatePathCoordsWithOffset() {
-         if (!this.pathCoords || this.pathCoords.length === 0) {
-             this.pathCoordsWithOffset = [];
-             console.warn("updatePathCoordsWithOffset skipped: pathCoords is empty.");
-             return;
-         }
-        this.pathCoordsWithOffset = this.pathCoords.map(coord => {
-            if (!coord || typeof coord.x !== 'number' || typeof coord.y !== 'number') {
-                 console.warn("Invalid coordinate in pathCoords during offset update:", coord);
-                 return null; 
-            }
-            return new Phaser.Math.Vector2(
-                coord.x * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_X,
-                coord.y * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_Y
-            );
-        }).filter(v => v !== null); 
-         
-         if (this.pathCoordsWithOffset.length > 0 && this.pathCoordsWithOffset.length === this.pathCoords.length) { 
+         if (!this.pathCoords || this.pathCoords.length === 0) { this.pathCoordsWithOffset = []; console.warn("updatePathCoordsWithOffset skipped: pathCoords is empty."); return; }
+        this.pathCoordsWithOffset = this.pathCoords.map(coord => { if (!coord || typeof coord.x !== 'number' || typeof coord.y !== 'number') { console.warn("Invalid coordinate in pathCoords during offset update:", coord); return null; } return new Phaser.Math.Vector2( coord.x * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_X, coord.y * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_Y ); }).filter(v => v !== null); 
+         if (this.pathCoordsWithOffset.length > 0) { // 시작점 = 끝점 추가
              this.pathCoordsWithOffset.push(this.pathCoordsWithOffset[0]);
-         } else if (this.pathCoordsWithOffset.length === 0 && this.pathCoords.length > 0) {
-             console.error("FATAL: pathCoordsWithOffset became empty after filtering invalid coordinates!");
-         }
+         } else if (this.pathCoords.length > 0) { console.error("FATAL: pathCoordsWithOffset became empty after filtering invalid coordinates!"); }
     }
 
     drawTiles(gameWidth, gameHeight) {
-        const bgGraphics = this.add.graphics();
-        this.mapGraphics.add(bgGraphics);
-        
+        const bgGraphics = this.add.graphics(); this.mapGraphics.add(bgGraphics);
         bgGraphics.fillStyle(0x000000).fillRect(0, 0, gameWidth, gameHeight); 
         
-        this.pathCoords.forEach(coord => {
-             if (!coord || typeof coord.x !== 'number' || typeof coord.y !== 'number') return;
-            const tileX = coord.x * this.TILE_SIZE + this.MAP_OFFSET_X;
-            const tileY = coord.y * this.TILE_SIZE + this.MAP_OFFSET_Y;
-            
-             let tileType = TILE_TYPE_PATH; 
-             if (coord.y >= 0 && coord.y < this.grid.length && coord.x >= 0 && coord.x < (this.grid[coord.y]?.length || 0) && this.grid[coord.y][coord.x] !== undefined) {
-                 tileType = this.grid[coord.y][coord.x];
-                 if (tileType === TILE_TYPE_EMPTY) tileType = TILE_TYPE_PATH;
-             } else {
-                 if (!this.grid[coord.y]) this.grid[coord.y] = [];
-                 this.grid[coord.y][coord.x] = TILE_TYPE_PATH;
-             }
-
-            let fillColor;
-            switch(tileType) {
-                case TILE_TYPE_START: fillColor = 0x90ee90; break; 
-                case TILE_TYPE_ENEMY2: fillColor = 0x0000ff; break;
-                case TILE_TYPE_ENEMY3: fillColor = 0x00ff00; break;
-                case TILE_TYPE_ENEMY5: fillColor = 0x800080; break;
-                case TILE_TYPE_PATH: 
-                default: fillColor = 0x555555; break;
+        // [수정] grid 전체를 순회하며 경로 타일만 그리기 (더 안전)
+        for (let y = 0; y < this.grid.length; y++) {
+            for (let x = 0; x < (this.grid[y]?.length || 0); x++) {
+                 const tileType = this.grid[y][x];
+                 if (tileType >= TILE_TYPE_PATH) { // 경로거나 특수 타일이면
+                    const tileX = x * this.TILE_SIZE + this.MAP_OFFSET_X;
+                    const tileY = y * this.TILE_SIZE + this.MAP_OFFSET_Y;
+                    let fillColor;
+                    switch(tileType) {
+                        case TILE_TYPE_START: fillColor = 0x90ee90; break;
+                        case TILE_TYPE_ENEMY2: fillColor = 0x0000ff; break;
+                        case TILE_TYPE_ENEMY3: fillColor = 0x00ff00; break;
+                        case TILE_TYPE_ENEMY5: fillColor = 0x800080; break;
+                        case TILE_TYPE_PATH: default: fillColor = 0x555555; break;
+                    }
+                    const tileGraphics = this.add.graphics(); this.mapGraphics.add(tileGraphics); 
+                    tileGraphics.fillStyle(fillColor).fillRect(tileX, tileY, this.TILE_SIZE, this.TILE_SIZE).lineStyle(1, 0x8B4513).strokeRect(tileX, tileY, this.TILE_SIZE, this.TILE_SIZE);
+                 }
             }
-
-            const tileGraphics = this.add.graphics();
-            this.mapGraphics.add(tileGraphics); 
-            tileGraphics.fillStyle(fillColor).fillRect(tileX, tileY, this.TILE_SIZE, this.TILE_SIZE).lineStyle(1, 0x8B4513).strokeRect(tileX, tileY, this.TILE_SIZE, this.TILE_SIZE);
-        });
+        }
     }
 
     moveHero() {
         if (!this.hero || !this.hero.body || !this.pathCoordsWithOffset || this.pathCoordsWithOffset.length <= 1) return;
 
-        if(this.pathIndex < 0 || this.pathIndex >= this.pathCoordsWithOffset.length) {
-            this.pathIndex = 0;
-             if (this.pathCoordsWithOffset.length === 0) return;
-        }
+        if(this.pathIndex < 0 || this.pathIndex >= this.pathCoordsWithOffset.length) { this.pathIndex = 0; if (this.pathCoordsWithOffset.length === 0) return; }
 
         const targetPos = this.pathCoordsWithOffset[this.pathIndex];
-        if (!targetPos || typeof targetPos.x !== 'number' || typeof targetPos.y !== 'number') {
-             this.pathIndex = (this.pathIndex + 1) % this.pathCoordsWithOffset.length; 
-            return;
-        }
+        if (!targetPos || typeof targetPos.x !== 'number' || typeof targetPos.y !== 'number') { this.pathIndex = (this.pathIndex + 1) % this.pathCoordsWithOffset.length; return; }
         
         const distance = Phaser.Math.Distance.Between(this.hero.x, this.hero.y, targetPos.x, targetPos.y);
 
         if (distance < 4) {
-             if (this.pathIndex === this.pathCoordsWithOffset.length - 1) {
+             const arrivedCoord = this.pathCoords[this.pathIndex === 0 ? this.pathCoords.length-1 : this.pathIndex -1]; // 도착한 그리드 좌표 (다음 인덱스 증가 전)
+             // [수정] ★★★ 도착한 타일의 적 검사 및 전투 시작 ★★★
+             if (arrivedCoord) {
+                 this.checkEnemiesAtTile(arrivedCoord.x, arrivedCoord.y);
+             }
+
+             if (this.pathIndex === this.pathCoordsWithOffset.length - 1) { // 마지막 점(시작점과 동일) 도착
                  this.pathIndex = 0; 
                  this.spawnEnemy5(); 
              } else {
@@ -562,6 +383,27 @@ class GameScene extends Phaser.Scene {
         } else {
             this.physics.moveTo(this.hero, targetPos.x, targetPos.y, 150); 
         }
+    }
+    
+    // [신규] ★★★ 특정 타일의 적 검사 및 전투 시작 함수 ★★★
+    checkEnemiesAtTile(gridX, gridY) {
+         if (this.startingCombat || this.registry.get('isPaused')) return;
+
+         const tileCenterX = gridX * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_X;
+         const tileCenterY = gridY * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_Y;
+         let enemiesOnTile = [];
+
+         this.enemyTriggers.getChildren().forEach(enemy => {
+             if (enemy.active && 
+                 Phaser.Math.Distance.Between(tileCenterX, tileCenterY, enemy.x, enemy.y) < this.TILE_SIZE * 0.5) // 타일 범위 내
+             {
+                 enemiesOnTile.push(enemy);
+             }
+         });
+
+         if (enemiesOnTile.length > 0) {
+             this.startCombat(enemiesOnTile);
+         }
     }
     
     advanceDay() {
@@ -598,32 +440,16 @@ class GameScene extends Phaser.Scene {
         return new Phaser.Math.Vector2( gridCoord.x * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_X, gridCoord.y * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_Y );
     }
 
-    checkEnemyOverlap(hero, enemyTrigger) {
-         if (this.startingCombat || !this.hero || !this.hero.body || this.registry.get('isPaused')) return; 
-
-         if (!this.overlappingEnemies) this.overlappingEnemies = [];
-         if (enemyTrigger.active && !this.overlappingEnemies.includes(enemyTrigger)) {
-             this.overlappingEnemies.push(enemyTrigger);
-         }
-         
-         if (!this.combatStartTimer) {
-             this.combatStartTimer = this.time.delayedCall(1, () => {
-                 this.startCombat(this.overlappingEnemies);
-                 this.overlappingEnemies = [];
-                 this.combatStartTimer = null;
-             }, [], this);
-         }
-    }
+    // [수정] ★★★ overlap 콜백 제거, startCombat만 사용 ★★★
+    // checkEnemyOverlap(hero, enemyTrigger) { ... }
     
     startCombat(enemiesToFight) {
         if (this.startingCombat || !enemiesToFight || enemiesToFight.length === 0) { 
-             this.overlappingEnemies = [];
-             this.combatStartTimer = null;
              return; 
         }
         
         this.startingCombat = true;
-        this.hero.body.stop();
+        if(this.hero.body) this.hero.body.stop(); // body 존재 확인
         
         let combatants = [];
         enemiesToFight.forEach(enemy => {
@@ -654,8 +480,11 @@ class GameScene extends Phaser.Scene {
     onCombatComplete(data) {
         this.startingCombat = false; 
         
-        if (!this.hero) { // 영웅이 G.O. 상태
-             // R키 리스너는 G.O. 시점에 이미 등록됨
+        if (!this.hero) { 
+             // G.O. 상태에서는 R키 리스너만 유지
+             if(!this.input.keyboard.hasListeners('keydown-R')){ // 중복 등록 방지
+                 this.input.keyboard.on('keydown-R', this.restartGame, this);
+             }
              return; 
         }
 
@@ -692,13 +521,15 @@ class GameScene extends Phaser.Scene {
         this.input.keyboard.off('keydown-R', this.restartGame, this); 
         this.input.keyboard.off('keydown-SPACE', this.togglePause, this); 
         
-        this.scene.stop('UIScene');
-        this.scene.stop('CombatScene'); 
-        this.scene.start('GameScene'); 
+        // [수정] ★★★ 씬 정리 강화 ★★★
+        // 모든 씬 제거 후 GameScene만 다시 추가/시작
+        this.scene.remove('UIScene'); 
+        this.scene.remove('CombatScene');
+        this.scene.start('GameScene'); // 현재 씬(GameScene) 재시작
     }
 } // End of GameScene class
 
-// --- 2. 전투 씬 --- (v8.2 수정 - 다중 적 전투)
+// --- 2. 전투 씬 --- (다중 적 세로 배치, 전투 종료 오류 수정)
 class CombatScene extends Phaser.Scene {
     constructor() {
         super('CombatScene');
@@ -738,10 +569,11 @@ class CombatScene extends Phaser.Scene {
         this.add.graphics().fillStyle(0x000000, 0.7).fillRect(0, 0, gameWidth, gameHeight); 
         this.add.graphics().fillStyle(0x333333).fillRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight).lineStyle(2, 0x8B4513).strokeRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight);
         
-        this.heroIllust = this.add.image(combatPanelX + combatPanelWidth * 0.3, combatPanelY + combatPanelHeight * 0.65, 'pixel').setDisplaySize(120, 160).setTint(0x00ffff);
+        // --- 영웅 생성 (동일) ---
+        this.heroIllust = this.add.image(combatPanelX + combatPanelWidth * 0.3, combatPanelY + combatPanelHeight * 0.5, 'pixel').setDisplaySize(120, 160).setTint(0x00ffff).setOrigin(0.5); // Y 중앙 정렬
         const hpBarWidth = 100; const hpBarHeight = 10;
         const heroHpBarX = this.heroIllust.x - hpBarWidth / 2; 
-        const heroHpBarY = this.heroIllust.y - 100; 
+        const heroHpBarY = this.heroIllust.y - this.heroIllust.displayHeight / 2 - 25; // 머리 위로 조정
         this.heroHpBarBG = this.add.rectangle(heroHpBarX, heroHpBarY, hpBarWidth, hpBarHeight, 0xff0000).setOrigin(0);
         this.heroHpBarFill = this.add.rectangle(heroHpBarX, heroHpBarY, hpBarWidth, hpBarHeight, 0x00ff00).setOrigin(0);
         const attackGaugeWidth = hpBarWidth; const attackGaugeHeight = hpBarHeight * 0.25; 
@@ -750,21 +582,21 @@ class CombatScene extends Phaser.Scene {
         this.heroAttackGaugeFill = this.add.rectangle(heroHpBarX, heroAttackGaugeY, 0, attackGaugeHeight, 0xffff00).setOrigin(0); 
         this.heroAttackGauge = 0;
         
-        // --- [수정] 다중 적 생성 ---
+        // --- [수정] 다중 적 세로 배치 ---
         const numEnemies = this.enemiesData.length;
-        const enemyStartX = combatPanelX + combatPanelWidth * 0.5; 
-        const enemyAreaWidth = combatPanelWidth * 0.45; 
-        const enemySpacing = (numEnemies > 1) ? (enemyAreaWidth / (numEnemies - 1)) : 0; 
-        const firstEnemyX = (numEnemies > 1) ? enemyStartX : (enemyStartX + enemyAreaWidth / 2); 
-
+        const enemyStartX = combatPanelX + combatPanelWidth * 0.7; // X 위치 고정
+        const enemyTotalHeight = 140 * numEnemies; // 적 일러스트 높이 기준
+        const enemySpacingY = (numEnemies > 1) ? (combatPanelHeight * 0.8 / (numEnemies -1)) : 0; // 세로 간격 (패널 높이의 80% 사용)
+        const firstEnemyY = combatPanelY + (combatPanelHeight / 2) - (enemyTotalHeight / 2) + 70; // 중앙 정렬 (일러스트 높이 절반 고려)
+         
         this.enemiesData.forEach((enemyData, index) => {
-            const enemyX = (numEnemies > 1) ? (firstEnemyX + (enemySpacing * index)) : firstEnemyX;
-            const enemyY = combatPanelY + combatPanelHeight * 0.65;
+            const enemyX = enemyStartX;
+            const enemyY = (numEnemies > 1) ? (firstEnemyY + (enemySpacingY * index)) : (combatPanelY + combatPanelHeight / 2); // 1마리면 Y 중앙
             
-            const enemyIllust = this.add.image(enemyX, enemyY, 'pixel').setDisplaySize(100, 140).setTint(enemyData.color); 
+            const enemyIllust = this.add.image(enemyX, enemyY, 'pixel').setDisplaySize(100, 140).setTint(enemyData.color).setOrigin(0.5); // 중앙 정렬
             
             const eHpBarX = enemyIllust.x - hpBarWidth / 2;
-            const eHpBarY = enemyIllust.y - 90; 
+            const eHpBarY = enemyIllust.y - enemyIllust.displayHeight / 2 - 25; // 머리 위로 조정
             const eAttackGaugeY = eHpBarY + hpBarHeight + 2;
 
             this.enemyIllusts.push(enemyIllust);
@@ -815,7 +647,8 @@ class CombatScene extends Phaser.Scene {
     updateHpBars() {
         const barWidth = 100;
         const heroPercent = Math.max(0, this.heroHp / this.heroMaxHp);
-        this.heroHpBarFill.width = barWidth * heroPercent; 
+        // heroHpBarFill이 아직 생성되지 않았을 수 있음 (create 완료 전)
+        if(this.heroHpBarFill) this.heroHpBarFill.width = barWidth * heroPercent; 
 
         this.enemiesData.forEach((enemyData, index) => {
              const enemyPercent = Math.max(0, this.enemyHps[index] / this.enemyMaxHps[index]);
@@ -825,7 +658,7 @@ class CombatScene extends Phaser.Scene {
         });
         
         const uiScene = this.scene.get('UIScene');
-        if (uiScene && uiScene.events && this.scene.isActive('UIScene')) { 
+        if (uiScene && uiScene.events && uiScene.scene.isActive()) { // UIScene 활성 확인 추가
              uiScene.events.emit('updateHeroHP', this.heroHp, this.heroMaxHp);
         }
     }
@@ -833,7 +666,7 @@ class CombatScene extends Phaser.Scene {
     updateAttackGauges() {
         const gaugeWidth = 100;
         const heroGaugePercent = Math.min(1, this.heroAttackGauge / 100); 
-        this.heroAttackGaugeFill.width = gaugeWidth * heroGaugePercent;
+        if (this.heroAttackGaugeFill) this.heroAttackGaugeFill.width = gaugeWidth * heroGaugePercent;
 
          this.enemiesData.forEach((enemyData, index) => {
              const enemyGaugePercent = Math.min(1, this.enemyAttackGauges[index] / 100);
@@ -862,7 +695,7 @@ class CombatScene extends Phaser.Scene {
             x: this.heroIllust.x + 20, 
             duration: 100, ease: 'Power1', yoyo: true,
             onComplete: () => {
-                this.enemyHps[targetIndex] -= 10; // [수정] ★★★ 적 HP 배열 참조 ★★★
+                this.enemyHps[targetIndex] -= 10; 
                 this.updateHpBars(); 
                 if (this.enemyHps[targetIndex] <= 0) { 
                     this.defeatEnemy(targetIndex); 
@@ -893,34 +726,34 @@ class CombatScene extends Phaser.Scene {
         if (!this.enemyIllusts[index] || !this.enemyIllusts[index].active) return; 
         
         const enemyIllust = this.enemyIllusts[index];
-        // this.combatRunning = false; // [수정] 마지막 적이 죽을 때만 false로
+        // this.combatRunning = false; // 전투는 계속
         
         this.add.tween({ 
             targets: enemyIllust, 
             alpha: 0, 
             duration: 500,
             onComplete: () => {
-                enemyIllust.active = false;
-                if(this.enemyHpBarBGs[index]) this.enemyHpBarBGs[index].destroy();
-                if(this.enemyHpBarFills[index]) this.enemyHpBarFills[index].destroy();
-                if(this.enemyAttackGaugeBGs[index]) this.enemyAttackGaugeBGs[index].destroy();
-                if(this.enemyAttackGaugeFills[index]) this.enemyAttackGaugeFills[index].destroy();
+                enemyIllust.active = false; // 보이지만 않게 처리
+                // [수정] ★★★ destroy 대신 비활성화 및 숨김 처리 ★★★
+                if(this.enemyHpBarBGs[index]) this.enemyHpBarBGs[index].setVisible(false);
+                if(this.enemyHpBarFills[index]) this.enemyHpBarFills[index].setVisible(false);
+                if(this.enemyAttackGaugeBGs[index]) this.enemyAttackGaugeBGs[index].setVisible(false);
+                if(this.enemyAttackGaugeFills[index]) this.enemyAttackGaugeFills[index].setVisible(false);
                 
                 let loot = null;
-                 if (Math.random() < this.enemiesData[index].dropRate) {
-                     loot = Phaser.Math.RND.pick(ALL_ITEM_KEYS);
-                 }
-                
-                 // [수정] ★★★ 모든 적이 죽었는지 확인 ★★★
+                 // [수정] 모든 적 처치 시에만 드랍 판정 (마지막 죽은 적 기준)
                 const allEnemiesDefeated = this.enemyHps.every(hp => hp <= 0);
                 
                 if (allEnemiesDefeated) {
-                     this.combatRunning = false; // 모든 적이 죽었을 때 전투 중지
+                     this.combatRunning = false; 
                     console.log("All enemies defeated!");
+                     if (Math.random() < this.enemiesData[index].dropRate) {
+                         loot = Phaser.Math.RND.pick(ALL_ITEM_KEYS);
+                     }
                     if (loot) this.dropItemAnimation(loot, enemyIllust.x, enemyIllust.y);
                     else this.endCombat(null);
                 } else {
-                    // 아직 적이 남았으므로 전투 계속
+                    // combatRunning = true; 
                 }
             }
         });
@@ -937,7 +770,7 @@ class CombatScene extends Phaser.Scene {
     }
     
     endCombat(loot) {
-        if (!this.scene.isActive()) return; // [수정] 씬이 이미 멈췄으면 중복 호출 방지
+        if (!this.scene.isActive()) return; 
         this.combatRunning = false;
         this.input.keyboard.off('keydown-SPACE', this.toggleGamePause, this);
         const gameScene = this.scene.get('GameScene');
@@ -958,7 +791,7 @@ class CombatScene extends Phaser.Scene {
     }
 } // End of CombatScene class
 
-// --- 3. UI 씬 --- (Registry 이벤트 리스너 수정)
+// --- 3. UI 씬 --- (v8.1 수정 - Registry 이벤트 리스너)
 class UIScene extends Phaser.Scene {
     constructor() {
         super('UIScene');
@@ -978,8 +811,7 @@ class UIScene extends Phaser.Scene {
         this.itemIcons = this.add.group();
 
         this.scale.on('resize', this.redraw, this);
-        // wake 이벤트는 이제 사용하지 않음
-        // this.events.on('wake', this.handleWake, this); 
+        // wake 이벤트 불필요
 
         const gameScene = this.scene.get('GameScene');
         
@@ -989,14 +821,12 @@ class UIScene extends Phaser.Scene {
                     if (this.dayText) this.dayText.setText(`Day: ${day}`);
                 }, this);
                 
-                // [수정] UIScene의 이벤트 리스너로 변경 (전투 중 HP 동기화)
                 this.events.on('updateHeroHP', this.updateHeroHP, this); 
                 
                 if (gameScene.registry && gameScene.registry.events) {
                     console.log("UIScene attaching registry listener");
-                    // [수정] ★★★ Registry의 'changedata-[key]' 이벤트를 수신 ★★★
                     gameScene.registry.events.on('changedata-isPaused', this.updatePauseText, this); 
-                    this.updatePauseText(); // 초기 상태 반영
+                    this.updatePauseText(); 
                 } else {
                      console.warn("UIScene create: GameScene registry not ready for pause listener after delay.");
                 }
@@ -1015,10 +845,8 @@ class UIScene extends Phaser.Scene {
         console.log("UIScene create end");
     }
     
-    // [수정] handleWake 함수 제거
-    // handleWake() { ... }
+    // handleWake() 함수 제거
     
-    // [수정] ★★★ Registry 값을 직접 읽도록 변경 ★★★
     updatePauseText() {
          const gameScene = this.scene.get('GameScene');
          if(this.pauseText && gameScene && gameScene.registry) { 
