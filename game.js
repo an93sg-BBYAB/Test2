@@ -792,11 +792,10 @@ F             }
         console.log("UIScene shutdown");
         this.scale.off('resize', this.redraw, this);
         const gameScene = this.scene.get('GameScene'); 
-        if (gameScene) {
-            if (gameScene.events) {
+       if (gameScene && gameScene.events) {
                 gameScene.events.off('updateDay', this.onUpdateDay, this);
-            }
-            if (this.registry && this.registry.events) {
+        }
+        if (this.registry && this.registry.events) {
             this.registry.events.off('changedata-isPaused', this.updatePauseText, this);
         }
 
@@ -878,4 +877,5 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
