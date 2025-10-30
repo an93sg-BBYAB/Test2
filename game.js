@@ -663,7 +663,10 @@ class CombatScene extends Phaser.Scene {
         }
     }
     update(time, delta) {
-        if (!this.combatRunning) return;
+        // [추가] ★★★ 전역 일시정지 확인 (스페이스바 안먹히던 문제 해결) ★★★
+        if (this.registry.get('isPaused')) return;
+        
+        if (!this.combatRunning) return;
         const deltaSeconds = delta / 1000; 
         this.heroAttackGauge += this.heroAttackSpeed * deltaSeconds;
         if (this.heroAttackGauge >= 100) {
@@ -935,15 +938,28 @@ class UIScene extends Phaser.Scene {
         if (this.uiElements) this.uiElements.clear(true, true); else this.uiElements = this.add.group();
         this.inventorySlots = []; this.equipSlots = {}; this.UI_START_X = gameWidth - this.UI_WIDTH; const topBar = this.add.graphics().fillStyle(0x666666).fillRect(0, 0, gameWidth, this.TOP_UI_HEIGHT); this.uiElements.add(topBar);
             
-        const text1 = this.add.text(10, 15, '시간의 흐름', { fontSize: '10px', fill: '#000000' }); const gameSceneRef = this.scene.get('GameScene'); const currentDay = (gameSceneRef && typeof gameSceneRef.day === 'number') ? gameSceneRef.day : 1; this.dayText = this.add.text(80, 15, `Day: ${currentDay}`, { fontSize: '14px', fill: '#000000' }); const text3 = this.add.text(200, 15, '계획', { fontSize: '10px', fill: '#000000' }); this.pauseText = this.add.text(gameWidth / 2, this.TOP_UI_HEIGHT / 2, '진행', this.pauseTextStyle).setOrigin(0.5); 
-        
-        // [추가] ★★★ 배속 텍스트 생성 ★★★
-        // (pauseText 오른쪽에 배치)
-        const currentSpeed = (this.registry && this.registry.get('gameSpeed')) ? this.registry.get('gameSpeed') : 1;
-        this.speedText = this.add.text(this.pauseText.x + 40, this.TOP_UI_HEIGHT / 2, `${currentSpeed}X`, this.pauseTextStyle).setOrigin(0, 0.5); // 0, 0.5 (좌측 정렬)
-        
-        const text5 = this.add.text(this.UI_START_X - 150 > 500 ? this.UI_START_X - 150 : 500, 15, '몇 번째 루프', { fontSize: '10px', fill: '#000000' }); this.uiElements.addMultiple([text1, this.dayText, text3, this.pauseText, text5]); const rightBar = this.add.graphics().fillStyle(0x333333).fillRect(this.UI_START_X, 0, this.UI_WIDTH, gameHeight); this.uiElements.add(rightBar); const RIGHT_UI_START_X = this.UI_START_X + this.UI_PADDING; let currentY = this.TOP_UI_HEIGHT + this.UI_PADDING; this.heroHpText = this.add.text(RIGHT_UI_START_X, currentY, 'HP: 100/100', this.hpStaTextStyle); currentY += 18; this.hpBarWidth = this.UI_WIDTH - (this.UI_PADDING * 2) - 20; this.hpBarHeight = 8; this.heroHpBarBG = this.add.rectangle(RIGHT_UI_START_X, currentY, this.hpBarWidth, this.hpBarHeight, 0xff0000).setOrigin(0); this.heroHpBarFill = this.add.rectangle(RIGHT_UI_START_X, currentY, this.hpBarWidth, this.hpBarHeight, 0x00ff00).setOrigin(0); currentY += 15; const staText = this.add.text(RIGHT_UI_START_X, currentY, 'STA: 100/100', { fontSize: '12px', fill: '#B09253' }); currentY += 30; this.uiElements.addMultiple([this.heroHpText, this.heroHpBarBG, this.heroHpBarFill, staText]); const EQUIP_SLOT_SIZE = 36; const EQUIP_SLOT_GAP_X = 5; const EQUIP_SLOT_GAP_Y = 10; const helmetLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'helmet', this.labelStyle); this.equipSlots['helmet'] = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'helmet', EQUIP_SLOT_SIZE); currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10; const armorLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'armor', this.labelStyle); this.equipSlots['armor']  = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'armor', EQUIP_SLOT_SIZE); const weaponLabel = this.add.text(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY, 'weapon', this.labelStyle); this.equipSlots['weapon'] = this.createSlot(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY + 15, 'weapon', EQUIP_SLOT_SIZE); const shieldLabel = this.add.text(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY, 'shield', this.labelStyle); this.equipSlots['shield'] = this.createSlot(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY + 15, 'shield', EQUIP_SLOT_SIZE); currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10; const glovesLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'gloves', this.labelStyle); this.equipSlots['gloves'] = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'gloves', EQUIP_SLOT_SIZE); const beltLabel = this.add.text(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY, 'belt', this.labelStyle); this.equipSlots['belt']   = this.createSlot(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY + 15, 'belt', EQUIP_SLOT_SIZE); const bootsLabel = this.add.text(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY, 'boots', this.labelStyle); this.equipSlots['boots']  = this.createSlot(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY + 15, 'boots', EQUIP_SLOT_SIZE); currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10; this.uiElements.addMultiple([helmetLabel, armorLabel, weaponLabel, shieldLabel, glovesLabel, beltLabel, bootsLabel]); const statsLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '능력치', this.inventoryLabelStyle); currentY += 20; const damageLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '피해: +X', this.hpStaTextStyle); currentY += 15; const defenseLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '방어: +Y', this.hpStaTextStyle); currentY += 25; this.uiElements.addMultiple([statsLabel, damageLabel, defenseLabel]); const invLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'Inventory', this.inventoryLabelStyle); currentY += 20; this.uiElements.add(invLabel); const INV_SLOT_SIZE = 36; const INV_SLOT_GAP = 5; let slotIndex = 0; for (let y = 0; y < 4; y++) { for (let x = 0; x < 4; x++) { const slotX = RIGHT_UI_START_X + 5 + x * (INV_SLOT_SIZE + INV_SLOT_GAP); const slotY = currentY + y * (INV_SLOT_SIZE + INV_SLOT_GAP); this.inventorySlots.push(this.createSlot(slotX, slotY, slotIndex++, INV_SLOT_SIZE)); } } this.selectedHighlight = this.add.graphics().lineStyle(2, 0xcc99ff); this.selectedHighlight.visible = false; this.errorText = this.add.text(this.UI_START_X + this.UI_WIDTH / 2, gameHeight - 30, '', { fontSize: '10px', fill: '#ff0000' }).setOrigin(0.5); this.uiElements.addMultiple([this.selectedHighlight, this.errorText]); let initialHp = 100, initialMaxHp = 100; if (gameSceneRef && gameSceneRef.heroData) { initialHp = gameSceneRef.heroData.hp; initialMaxHp = gameSceneRef.heroData.maxHp; } if (gameSceneRef && gameSceneRef.hero) { initialHp = gameSceneRef.hero.hp; initialMaxHp = gameSceneRef.hero.maxHp; } this.updateHeroHP(initialHp, initialMaxHp); if (gameSceneRef && gameSceneRef.registry) { this.updatePauseText(); } this.refreshInventory(); console.log("UIScene redraw end");
-    }
+// [수정] ★★★ 텍스트 흰색 변경 ★★★
+         const text1 = this.add.text(10, 15, '시간의 흐름', { fontSize: '10px', fill: '#FFFFFF' }); 
+         const gameSceneRef = this.scene.get('GameScene'); 
+         const currentDay = (gameSceneRef && typeof gameSceneRef.day === 'number') ? gameSceneRef.day : 1; 
+         this.dayText = this.add.text(80, 15, `Day: ${currentDay}`, { fontSize: '14px', fill: '#FFFFFF' }); 
+
+         // [수정] ★★★ '계획' 텍스트(text3) 삭제 ★★★
+         // const text3 = this.add.text(200, 15, '계획', { fontSize: '10px', fill: '#000000' }); 
+         this.pauseText = this.add.text(gameWidth / 2, this.TOP_UI_HEIGHT / 2, '진행', this.pauseTextStyle).setOrigin(0.5); 
+         
+         // (배속 텍스트 - v8.15 수정안)
+         const currentSpeed = (this.registry && this.registry.get('gameSpeed')) ? this.registry.get('gameSpeed') : 1;
+         this.speedText = this.add.text(this.pauseText.x + 40, this.TOP_UI_HEIGHT / 2, `${currentSpeed}X`, this.pauseTextStyle).setOrigin(0, 0.5); 
+
+         // [수정] ★★★ 루프 텍스트 동적 생성 및 흰색 변경 ★★★
+         const currentLoop = (this.registry && this.registry.get('loopCount')) ? this.registry.get('loopCount') : 1;
+         this.loopText = this.add.text(this.UI_START_X - 150 > 500 ? this.UI_START_X - 150 : 500, 15, `${currentLoop}번째 루프`, { fontSize: '14px', fill: '#FFFFFF' }); 
+
+         // [수정] text3, text5 제거 / speedText, loopText 추가
+         this.uiElements.addMultiple([text1, this.dayText, this.pauseText, this.speedText, this.loopText]); 
+         const rightBar = this.add.graphics().fillStyle(0x333333).fillRect(this.UI_START_X, 0, this.UI_WIDTH, gameHeight);
+    }
     updateHeroHP(hp, maxHp) {
         if (!this.scene.isActive() || !this.heroHpText || !this.heroHpBarFill) return;
         this.heroHpText.setText(`HP: ${hp.toFixed(0)}/${maxHp}`); 
@@ -1015,6 +1031,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
