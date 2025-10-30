@@ -41,8 +41,12 @@ class GameScene extends Phaser.Scene {
         this.scene.run('UIScene');
         this.registry.set('isPaused', false);
         this.pathIndex = 0; this.day = 1; this.tilesMovedTotal = 0;
+        // [추가] ★★★ 루프 카운터 초기화 ★★★
+        this.loopCount = 1;
+        this.registry.set('loopCount', this.loopCount);
+            
         this.enemyTriggers = this.physics.add.group(); this.mapGraphics = this.add.group();
-
+            
         this.generateRandomLoop(); // 루프 경로 생성 (데이터만)
 
         this.scale.on('resize', this.redraw, this);
@@ -373,6 +377,10 @@ class GameScene extends Phaser.Scene {
                      }
                      console.log("Hero HP restored at start point.");
                  }
+
+                 // [추가] ★★★ 루프 카운터 증가 ★★★
+                 this.loopCount++;
+                 this.registry.set('loopCount', this.loopCount);
                  
              } else {
                 this.pathIndex++;
@@ -410,8 +418,19 @@ class GameScene extends Phaser.Scene {
         if (this.registry.get('isPaused')) return; 
         this.day++; this.tilesMovedSinceLastDay = 0; console.log(`Day ${this.day} started`);
         const uiScene = this.scene.get('UIScene'); if(uiScene && uiScene.events && this.scene.isActive('UIScene')) { uiScene.events.emit('updateDay', this.day); }
-        if (this.hero) { this.hero.hp = this.hero.maxHp; if(uiScene && uiScene.events && this.scene.isActive('UIScene')) { uiScene.events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp); } } 
-        else if (this.heroData){ this.heroData.hp = this.heroData.maxHp; }
+        
+        // [수정] ★★★ 최대 체력의 0.25배 만큼 '회복' ★★★
+        if (this.hero) { 
+            // 현재 체력에 최대 체력의 25%를 더하되, 최대 체력을 넘지 않도록 합니다.
+            this.hero.hp = Math.min(this.hero.hp + (this.hero.maxHp * 0.25), this.hero.maxHp);
+            if(uiScene && uiScene.events && this.scene.isActive('UIScene')) { 
+                uiScene.events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp); 
+            } 
+        } 
+        else if (this.heroData){ 
+            this.heroData.hp = Math.min(this.heroData.hp + (this.heroData.maxHp * 0.25), this.heroData.maxHp);
+        }
+
         this.spawnEnemy1(); if (this.day % 2 === 0) this.spawnEnemy2(); if (this.day % 3 === 0) this.spawnEnemy3();
     }
     spawnEnemy1() { 
@@ -855,7 +874,8 @@ class UIScene extends Phaser.Scene {
                     this.registry.events.on('changedata-isPaused', this.updatePauseText, this);
                     // [추가] ★★★ 배속 텍스트 리스너 ★★★
                     this.registry.events.on('changedata-gameSpeed', this.updateSpeedText, this);
-                    
+                    // [추가] ★★★ 루프 카운터 리스너 ★★★
+                    this.registry.events.on('changedata-loopCount', this.updateLoopText, this);
                     this.updatePauseText(); 
                 } else {
                      console.warn("UIScene create: GameScene registry not ready for pause listener after delay.");
@@ -883,6 +903,8 @@ class UIScene extends Phaser.Scene {
             this.registry.events.off('changedata-isPaused', this.updatePauseText, this);
             // [추가] ★★★ 배속 텍스트 리스너 제거 ★★★
             this.registry.events.off('changedata-gameSpeed', this.updateSpeedText, this);
+            // [추가] ★★★ 루프 카운터 리스너 제거 ★★★
+            this.registry.events.off('changedata-loopCount', this.updateLoopText, this);
         }
 
         this.events.off('updateHeroHP', this.updateHeroHP, this);
@@ -903,14 +925,18 @@ class UIScene extends Phaser.Scene {
 
          // [수정] gameScene이 존재하고 'active' 상태일 때만 registry 값을 읽음
          if(this.pauseText && gameScene && gameScene.scene.isActive()) { 
-            const isPaused = gameScene.registry.get('isPaused'); // gameScene.registry를 읽는 것은 안전
+            // gameScene.registry에서 읽어오는 것은 괜찮습니다.
+            const isPaused = gameScene.registry.get('isPaused');
             this.pauseText.setText(isPaused ? '중지' : '진행');
-         } 
+         }
     }
     redraw(gameSize) {
         console.log("UIScene redraw start", gameSize); const gameWidth = gameSize ? gameSize.width : this.cameras.main.width; const gameHeight = gameSize ? gameSize.height : this.cameras.main.height; if (gameWidth <= 1 || gameHeight <= 1) { console.warn("UIScene redraw skipped due to invalid size:", gameWidth, gameHeight); return; } 
         if (this.uiElements) this.uiElements.clear(true, true); else this.uiElements = this.add.group();
-        this.inventorySlots = []; this.equipSlots = {}; this.UI_START_X = gameWidth - this.UI_WIDTH; const topBar = this.add.graphics().fillStyle(0x666666).fillRect(0, 0, gameWidth, this.TOP_UI_HEIGHT); this.uiElements.add(topBar); const text1 = this.add.text(10, 15, '시간의 흐름', { fontSize: '10px', fill: '#000000' }); const gameSceneRef = this.scene.get('GameScene'); const currentDay = (gameSceneRef && typeof gameSceneRef.day === 'number') ? gameSceneRef.day : 1; this.dayText = this.add.text(80, 15, `Day: ${currentDay}`, { fontSize: '14px', fill: '#000000' }); const text3 = this.add.text(200, 15, '계획', { fontSize: '10px', fill: '#000000' }); this.pauseText = this.add.text(gameWidth / 2, this.TOP_UI_HEIGHT / 2, '진행', this.pauseTextStyle).setOrigin(0.5); 
+        this.inventorySlots = []; this.equipSlots = {}; this.UI_START_X = gameWidth - this.UI_WIDTH; const topBar = this.add.graphics().fillStyle(0x666666).fillRect(0, 0, gameWidth, this.TOP_UI_HEIGHT); this.uiElements.add(topBar);
+            
+        const text1 = this.add.text(10, 15, '시간의 흐름', { fontSize: '10px', fill: '#000000' }); const gameSceneRef = this.scene.get('GameScene'); const currentDay = (gameSceneRef && typeof gameSceneRef.day === 'number') ? gameSceneRef.day : 1; this.dayText = this.add.text(80, 15, `Day: ${currentDay}`, { fontSize: '14px', fill: '#000000' }); const text3 = this.add.text(200, 15, '계획', { fontSize: '10px', fill: '#000000' }); this.pauseText = this.add.text(gameWidth / 2, this.TOP_UI_HEIGHT / 2, '진행', this.pauseTextStyle).setOrigin(0.5); 
+        
         // [추가] ★★★ 배속 텍스트 생성 ★★★
         // (pauseText 오른쪽에 배치)
         const currentSpeed = (this.registry && this.registry.get('gameSpeed')) ? this.registry.get('gameSpeed') : 1;
@@ -959,7 +985,15 @@ class UIScene extends Phaser.Scene {
             this.speedText.setText(`${data}X`);
         }
     }
-    
+ 
+    // [추가] ★★★ 루프 텍스트 업데이트 함수 ★★★
+    updateLoopText(parent, key, data) {
+        if (this.loopText) {
+            this.loopText.setText(`${data}번째 루프`);
+        }
+    }
+
+        
 } // End of UIScene class
 
 // --- Phaser 게임 설정 ---
@@ -981,6 +1015,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
