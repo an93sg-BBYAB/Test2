@@ -700,6 +700,10 @@ class CombatScene extends Phaser.Scene {
         const targetIndex = Phaser.Math.RND.pick(livingTargets);
         const targetIllust = this.enemyIllusts[targetIndex];
          if (!targetIllust || !targetIllust.active) return; 
+
+        // [추가] ★★★ 배속 적용 ★★★
+        const gameSpeed = this.registry.get('gameSpeed') || 1;
+            
         this.add.tween({ 
             targets: this.heroIllust, 
             x: this.heroIllust.x + 20, 
@@ -718,6 +722,10 @@ class CombatScene extends Phaser.Scene {
         if (!this.combatRunning || !this.heroIllust.active || !this.enemyIllusts[index] || !this.enemyIllusts[index].active) return;
         const enemyIllust = this.enemyIllusts[index];
         const enemyAtk = this.enemiesData[index].atk;
+
+        // [추가] ★★★ 배속 적용 ★★★
+        const gameSpeed = this.registry.get('gameSpeed') || 1;
+            
         this.add.tween({ 
             targets: enemyIllust,
             x: enemyIllust.x - 20, 
@@ -734,11 +742,14 @@ class CombatScene extends Phaser.Scene {
         if (!this.enemyIllusts[index] || !this.enemyIllusts[index].active) return;
         
         const enemyIllust = this.enemyIllusts[index];
-        
+
+        // [추가] ★★★ 배속 적용 ★★★
+        const gameSpeed = this.registry.get('gameSpeed') || 1;
+            
         this.add.tween({ 
             targets: enemyIllust, 
             alpha: 0, 
-            duration: 500,
+            duration: 500 / gameSpeed,
             onComplete: () => {
                 enemyIllust.active = false; 
                 if(this.enemyHpBarBGs[index]) this.enemyHpBarBGs[index].setVisible(false);
@@ -766,7 +777,16 @@ class CombatScene extends Phaser.Scene {
         const itemIcon = this.add.rectangle(x, y, 20, 20, itemData.color);
         const inventoryCenterSlotX = this.cameras.main.width - 190 + 50; 
         const inventoryCenterSlotY = 415;
-        this.add.tween({ targets: itemIcon, x: inventoryCenterSlotX, y: inventoryCenterSlotY, duration: 700, ease: 'Back.easeIn',
+
+        // [추가] ★★★ 배속 적용 ★★★
+        const gameSpeed = this.registry.get('gameSpeed') || 1;
+            
+        this.add.tween({
+            targets: itemIcon, 
+            x: inventoryCenterSlotX, 
+            y: inventoryCenterSlotY, 
+            duration: 700, 
+            ease: 'Back.easeIn',
             onComplete: () => { itemIcon.destroy(); this.endCombat(itemKey); }
         });
     }
@@ -952,6 +972,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
