@@ -1,4 +1,4 @@
-// game.js (v8.13 - 모든 오타 및 쓰레기 문자 제거)
+// game.js (v8.14 - 모든 오타 및 쓰레기 문자 제거)
 
 // --- 데이터 정의 ---
 const ItemData = {
@@ -337,7 +337,7 @@ class GameScene extends Phaser.Scene {
                  const combatStarted = this.checkEnemiesAtTile(arrivedCoord.x, arrivedCoord.y);
                  if (combatStarted) {
                      return; 
-        _        }
+                 }
              }
              if (this.pathIndex === this.pathCoordsWithOffset.length - 1) { 
                  this.pathIndex = 0; 
@@ -437,11 +437,11 @@ class GameScene extends Phaser.Scene {
         this.scene.launch('CombatScene', combatData);
     }
     
-    // [수정] ★★★ v8.12 (v8.11)의 'hasListeners' 오류 수정본 ★★★
+    // [수정] ★★★ 'hasListeners' 오류가 수정된 함수 ★★★
     onCombatComplete(data) {
         this.startingCombat = false; 
         
-        // [수정] v8.10의 471줄 오류 원인이었던 'if (!this.hero)' 블록
+        // [수정] 471줄 오류 원인이었던 'if (!this.hero)' 블록
         // 'hasListeners'를 호출하던 코드를 제거하고 'return'으로 변경
         if (!this.hero) { 
              return; // hero가 없으면(ex: 씬 종료 중) 아무것도 하지 않고 종료
@@ -460,16 +460,16 @@ class GameScene extends Phaser.Scene {
         }
         
         if (this.hero.hp <= 0) {
-            // [수정] v8.5의 버그 수정 (일시정지 중 게임오버시 재시작 가능하게)
+            // v8.5의 버그 수정 (일시정지 중 게임오버시 재시작 가능하게)
             this.scene.resume('GameScene'); 
 
             this.hero.destroy(); 
             this.hero = null; 
-             // 이제 이 코드가 정상적으로 실행됩니다.
+             // 'GAME OVER' 텍스트 출력
              const gameOverText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2, 'GAME OVER\nPress "R" to Restart', { fontSize: '40px', fill: '#ff0000', align: 'center', backgroundColor: '#000000' }).setOrigin(0.5);
              gameOverText.setDepth(10); 
              
-             // [수정] v8.10의 493줄 오류 원인이었던 'hasListeners' if문 제거
+             // [수정] 493줄 오류 원인이었던 'hasListeners' if문 제거
              // 'R'키 리스너는 create에서 이미 등록했으므로 여기서 또 등록할 필요가 없습니다.
         
         } else {
@@ -481,7 +481,7 @@ class GameScene extends Phaser.Scene {
         }
     }
     
-    // [수정] v8.5의 'isActive' 체크 제거 (재시작 버그 수정)
+    // v8.5의 'isActive' 체크 제거 (재시작 버그 수정)
     restartGame(event) {
         // if (!this.scene.isActive()) return; // <-- 이 줄이 제거된 상태여야 함
         
@@ -496,7 +496,7 @@ class GameScene extends Phaser.Scene {
     }
 } // End of GameScene class
 
-// --- 2. 전투 씬 --- (v8.12 - 모든 오타 제거)
+// --- 2. 전투 씬 --- (v8.13 - 모든 오타 제거)
 class CombatScene extends Phaser.Scene {
     constructor() {
         super('CombatScene');
@@ -632,7 +632,7 @@ class CombatScene extends Phaser.Scene {
          if (!targetIllust || !targetIllust.active) return; 
         this.add.tween({ 
             targets: this.heroIllust, 
-      *       x: this.heroIllust.x + 20, 
+            x: this.heroIllust.x + 20, 
             duration: 100, ease: 'Power1', yoyo: true,
             onComplete: () => {
                 if (!this.combatRunning) return; 
@@ -657,7 +657,7 @@ class CombatScene extends Phaser.Scene {
                 this.heroHp -= enemyAtk;
                 this.updateHpBars(); 
                 if (this.heroHp <= 0) { this.defeatHero(); }
-            } // <-- [수정] v8.12의 'GA' 오타가 여기서 제거되었습니다.
+            }
         });
     }
     defeatEnemy(index) {
@@ -757,7 +757,7 @@ class UIScene extends Phaser.Scene {
                     this.updatePauseText(); 
                 } else {
                      console.warn("UIScene create: GameScene registry not ready for pause listener after delay.");
-                }
+F             }
              } else {
                  console.warn("UIScene create: GameScene not ready for event listeners after delay.");
              }
@@ -819,7 +819,7 @@ class UIScene extends Phaser.Scene {
     }
     onSlotClick(slot) {
         if (!this.scene.isActive()) return;
-button     const slotKey = slot.getData('slotKey'); if (this.selectedItemIndex !== null) { const itemKey = this.inventory[this.selectedItemIndex]; if (!itemKey) { this.clearSelection(); return; } const itemType = ItemData[itemKey].type; if (this.equipSlots[slotKey]) { if (slotKey === itemType) { this.equipItem(itemKey, slotKey); this.inventory[this.selectedItemIndex] = null; this.clearSelection(); this.refreshInventory(); } else { this.showError('해당 아이템을 장착할 수 없는 위치입니다.'); } } else { this.clearSelection(); } } else { if (typeof slotKey === 'number' && slotKey < this.inventory.length && this.inventory[slotKey]) { this.selectedItemIndex = slotKey; this.selectedHighlight.visible = true; if (this.selectedHighlight) { this.selectedHighlight.clear().lineStyle(2, 0xcc99ff).strokeRect(slot.x, slot.y, slot.width, slot.height); } } }
+        const slotKey = slot.getData('slotKey'); if (this.selectedItemIndex !== null) { const itemKey = this.inventory[this.selectedItemIndex]; if (!itemKey) { this.clearSelection(); return; } const itemType = ItemData[itemKey].type; if (this.equipSlots[slotKey]) { if (slotKey === itemType) { this.equipItem(itemKey, slotKey); this.inventory[this.selectedItemIndex] = null; this.clearSelection(); this.refreshInventory(); } else { this.showError('해당 아이템을 장착할 수 없는 위치입니다.'); } } else { this.clearSelection(); } } else { if (typeof slotKey === 'number' && slotKey < this.inventory.length && this.inventory[slotKey]) { this.selectedItemIndex = slotKey; this.selectedHighlight.visible = true; if (this.selectedHighlight) { this.selectedHighlight.clear().lineStyle(2, 0xcc99ff).strokeRect(slot.x, slot.y, slot.width, slot.height); } } }
     }
     addItem(itemKey) {
         if (!this.scene.isActive()) return;
