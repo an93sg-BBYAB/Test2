@@ -20,6 +20,10 @@ const TILE_TYPE_EMPTY = 0; const TILE_TYPE_PATH = 1; const TILE_TYPE_ENEMY2 = 2;
 const TILE_TYPE_ENEMY3 = 3; const TILE_TYPE_ENEMY5 = 5; const TILE_TYPE_START = 6;
 
 // --- 1. 메인 게임 씬 (필드 탐험) ---
+// game.js (v8.11 - onCombatComplete의 'hasListeners' 오류 수정)
+// [ ... GameScene의 constructor, preload, create, shutdown, togglePause, redraw ... 등은 v8.10과 동일 ... ]
+
+// --- 1. 메인 게임 씬 (v8.10 코드를 이 아래 코드로 교체) ---
 class GameScene extends Phaser.Scene {
     constructor() {
         super('GameScene');
@@ -67,7 +71,8 @@ class GameScene extends Phaser.Scene {
              } else { console.error("FATAL: Failed to generate even default loop!"); }
         }
         this.input.keyboard.on('keydown-SPACE', this.togglePause, this);
-        this.input.keyboard.on('keydown-R', this.restartGame, this); // 언제든 R키로 재시작
+        // 'R'키 리스너를 여기서 '항상' 등록합니다.
+        this.input.keyboard.on('keydown-R', this.restartGame, this);
 
         console.log("GameScene create end");
     }
@@ -77,6 +82,7 @@ class GameScene extends Phaser.Scene {
         this.scale.off('resize', this.redraw, this);
         this.events.off('combatComplete', this.onCombatComplete, this);
         this.input.keyboard.off('keydown-SPACE', this.togglePause, this);
+        // 여기서 'R'키 리스너를 '항상' 제거합니다.
         this.input.keyboard.off('keydown-R', this.restartGame, this); 
         this.time.removeAllEvents();
         if (this.enemyTriggers) this.enemyTriggers.destroy(true);
@@ -112,339 +118,29 @@ class GameScene extends Phaser.Scene {
         } else if (this.hero && this.pathCoordsWithOffset.length > 0) {
              console.log("GameScene repositioning hero");
             const currentPos = this.pathCoordsWithOffset[this.pathIndex]; if (!currentPos) { console.error("Cannot reposition hero, current position is invalid!"); return; }
-            this.hero.setPosition(currentPos.x, currentPos.y); this.hero.setDepth(1);
+             this.hero.setPosition(currentPos.x, currentPos.y); this.hero.setDepth(1);
             if (this.hero.body) { this.hero.body.reset(currentPos.x, currentPos.y); }
             else if (this.hero.active) { console.log("Re-enabling physics body for hero"); this.physics.world.enable(this.hero); if(this.hero.body) this.hero.body.reset(currentPos.x, currentPos.y); }
-        }
+	     }
         this.isInitialDrawComplete = true; console.log("GameScene redraw end");
     }
-    calculateMapOffsets(gameWidth, gameHeight) {
-         if (!this.pathCoords || this.pathCoords.length === 0) { this.MAP_OFFSET_X = (gameWidth - this.RIGHT_UI_WIDTH) / 2; this.MAP_OFFSET_Y = this.TOP_UI_HEIGHT + (gameHeight - this.TOP_UI_HEIGHT) / 2; console.warn("calculateMapOffsets using default center due to empty pathCoords."); return; }
-         let sumX = 0, sumY = 0; let validCoords = 0;
-         this.pathCoords.forEach(coord => { if (coord && typeof coord.x === 'number' && typeof coord.y === 'number') { sumX += coord.x; sumY += coord.y; validCoords++; } });
-         if (validCoords === 0) { this.MAP_OFFSET_X = (gameWidth - this.RIGHT_UI_WIDTH) / 2; this.MAP_OFFSET_Y = this.TOP_UI_HEIGHT + (gameHeight - this.TOP_UI_HEIGHT) / 2; console.warn("calculateMapOffsets using default center due to invalid pathCoords content."); return; }
-         const avgGridX = sumX / validCoords; const avgGridY = sumY / validCoords;
-        const gameplayAreaWidth = gameWidth - this.RIGHT_UI_WIDTH; const gameplayAreaHeight = gameHeight - this.TOP_UI_HEIGHT;
-        const gameplayCenterX = gameplayAreaWidth / 2; const gameplayCenterY = this.TOP_UI_HEIGHT + (gameplayAreaHeight / 2);
-        const avgPixelX_noOffset = avgGridX * this.TILE_SIZE + this.TILE_SIZE / 2; const avgPixelY_noOffset = avgGridY * this.TILE_SIZE + this.TILE_SIZE / 2;
-        this.MAP_OFFSET_X = gameplayCenterX - avgPixelX_noOffset; this.MAP_OFFSET_Y = gameplayCenterY - avgPixelY_noOffset;
-         console.log(`Calculated Offsets: X=${this.MAP_OFFSET_X.toFixed(1)}, Y=${this.MAP_OFFSET_Y.toFixed(1)}`);
-    }
-    update(time, delta) {
-        if (this.registry.get('isPaused')) { if (this.hero && this.hero.body) { this.hero.body.setVelocity(0, 0); } return; }
-        if (!this.isInitialDrawComplete || !this.hero || !this.hero.active) return;
-        if (!this.startingCombat) { this.moveHero(); }
-    }
-    generateRandomLoop() {
-        this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(TILE_TYPE_EMPTY));
-        this.pathCoords = [];
-        this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] };
-        const startX = Math.floor(this.GRID_WIDTH / 2);
-        const startY = Math.floor(this.GRID_HEIGHT / 2);
-        this.setGrid(startX, startY, TILE_TYPE_START);
-        let stack = [{ x: startX, y: startY }];
-        let visited = new Set([`${startX},${startY}`]);
-        let path = []; 
-        path.push({x: startX, y: startY});
-        const targetLength = Phaser.Math.Between(30, 40);
-        let failsafe = 1000; 
-        while (stack.length > 0 && path.length < targetLength && failsafe-- > 0) {
-            let current = stack[stack.length - 1];
-            let neighbors = [];
-            const directions = [[0, -2], [0, 2], [-2, 0], [2, 0]];
-            Phaser.Utils.Array.Shuffle(directions);
-            for (const [dx, dy] of directions) {
-                const nx = current.x + dx;
-                const ny = current.y + dy;
-                if (nx > 0 && nx < this.GRID_WIDTH - 1 && ny > 0 && ny < this.GRID_HEIGHT - 1 && !visited.has(`${nx},${ny}`)) {
-                    neighbors.push({ x: nx, y: ny, wallX: current.x + dx / 2, wallY: current.y + dy / 2 });
-                }
-            }
-            if (neighbors.length > 0) {
-                const next = neighbors[0];
-                this.setGrid(next.wallX, next.wallY, TILE_TYPE_PATH);
-                path.push({x: next.wallX, y: next.wallY});
-                this.setGrid(next.x, next.y, TILE_TYPE_PATH);
-                path.push({x: next.x, y: next.y});
-                visited.add(`${next.x},${next.y}`);
-                stack.push({ x: next.x, y: next.y });
-            } else {
-                stack.pop(); 
-            }
-        }
-         if (failsafe <= 0) console.warn("Maze generation timeout!");
-        let lastPos = path[path.length-1];
-         if (lastPos && (lastPos.x !== startX || lastPos.y !== startY)) {
-             if (Math.abs(lastPos.x - startX) === 1 && lastPos.y === startY && this.grid[startY]?.[Math.min(lastPos.x, startX)] === TILE_TYPE_EMPTY) {
-                  this.setGrid(Math.min(lastPos.x, startX), startY, TILE_TYPE_PATH); path.push({x: Math.min(lastPos.x, startX), y: startY});
-             } else if (Math.abs(lastPos.y - startY) === 1 && lastPos.x === startX && this.grid[Math.min(lastPos.y, startY)]?.[startX] === TILE_TYPE_EMPTY) {
-                  this.setGrid(startX, Math.min(lastPos.y, startY), TILE_TYPE_PATH); path.push({x: startX, y: Math.min(lastPos.y, startY)});
-             }
-         }
-        this.pathCoords = [];
-        let current = { x: startX, y: startY };
-        let cameFrom = null; 
-        const startNeighbors = [];
-        if (this.grid[startY]?.[startX+1] >= TILE_TYPE_PATH) startNeighbors.push({x: startX+1, y: startY});
-        if (this.grid[startY+1]?.[startX] >= TILE_TYPE_PATH) startNeighbors.push({x: startX, y: startY+1});
-        if (this.grid[startY]?.[startX-1] >= TILE_TYPE_PATH) startNeighbors.push({x: startX-1, y: startY});
-        if (this.grid[startY-1]?.[startX] >= TILE_TYPE_PATH) startNeighbors.push({x: startX, y: startY-1});
-        if (startNeighbors.length < 2) { 
-             console.error("Loop start point is invalid after maze gen, neighbors:", startNeighbors.length);
-             this.generateDefaultLoop();
-             this.assignSpecialTiles();
-             return;
-        }
-        cameFrom = startNeighbors[0]; 
-        do {
-            this.pathCoords.push({ ...current });
-            const neighbors = this.getPathNeighbors(current.x, current.y);
-            let next = null;
-            if (neighbors.length !== 2 && !(current.x === startX && current.y === startY && neighbors.length > 0)) { 
-                 console.error(`Path generation error: Invalid neighbor count (${neighbors.length}) at`, current);
-                  this.generateDefaultLoop();
-                  this.assignSpecialTiles();
-                  return;
-            }
-             const searchOrder = [
-                 { x: current.x + 1, y: current.y }, // 우
-                 { x: current.x, y: current.y + 1 }, // 하
-                 { x: current.x - 1, y: current.y }, // 좌
-                 { x: current.x, y: current.y - 1 }  // 상
-             ];
-            for (const potentialNext of searchOrder) {
-                const isNeighbor = neighbors.some(n => n.x === potentialNext.x && n.y === potentialNext.y);
-                const isCameFrom = cameFrom && (potentialNext.x === cameFrom.x && potentialNext.y === cameFrom.y);
-                if (isNeighbor && !isCameFrom) {
-                    next = potentialNext;
-                    break;
-                }
-            }
-             if (!next && current.x === startX && current.y === startY && this.pathCoords.length > 1) {
-                  break; // 루프 완성
-             } else if (!next) {
-                  console.error("Path trace error: Cannot find next clockwise step from", current);
-                  this.generateDefaultLoop();
-                  this.assignSpecialTiles();
-                  return;
-             }
-            cameFrom = { ...current };
-            current = { ...next };
-        } while ((current.x !== startX || current.y !== startY) && this.pathCoords.length <= (this.GRID_WIDTH * this.GRID_HEIGHT));
-        if (this.pathCoords.length < 10 || this.pathCoords.length > (this.GRID_WIDTH * this.GRID_HEIGHT)) {
-             console.warn("Final loop trace failed or invalid length, creating default loop.");
-             this.generateDefaultLoop();
-        }
-        this.assignSpecialTiles();
-        console.log("Final loop length:", this.pathCoords.length);
-        console.log("Final Special Tiles:", this.specialTileCoords);
-    }
-    setGrid(x, y, value) {
-         if (y >= 0 && y < this.GRID_HEIGHT && x >= 0 && x < this.GRID_WIDTH) {
-             if (!this.grid[y]) this.grid[y] = [];
-             this.grid[y][x] = value;
-             return true;
-         }
-         return false;
-    }
-    getPathNeighbors(x, y) {
-        const neighbors = []; const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]; 
-        for (const [dx, dy] of dirs) { const nx = x + dx; const ny = y + dy; if (this.grid[ny]?.[nx] >= TILE_TYPE_PATH) { neighbors.push({ x: nx, y: ny }); } }
-        return neighbors;
-    }
-    generateDefaultLoop() {
-        console.log("Generating default loop...");
-        this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(TILE_TYPE_EMPTY)); 
-        this.pathCoords = [];
-        const loopSize = 5; const startX = 5, startY = 5;
-        for (let x = startX; x <= startX + loopSize; x++) { this.setGrid(x, startY, TILE_TYPE_PATH); this.pathCoords.push({ x: x, y: startY }); }
-        for (let y = startY + 1; y <= startY + loopSize; y++) { this.setGrid(startX + loopSize, y, TILE_TYPE_PATH); this.pathCoords.push({ x: startX + loopSize, y: y }); }
-        for (let x = startX + loopSize - 1; x >= startX; x--) { this.setGrid(x, startY + loopSize, TILE_TYPE_PATH); this.pathCoords.push({ x: x, y: startY + loopSize }); }
-        for (let y = startY + loopSize - 1; y > startY; y--) { this.setGrid(startX, y, TILE_TYPE_PATH); this.pathCoords.push({ x: startX, y: y }); }
-         this.setGrid(startX, startY, TILE_TYPE_START);
-    }
-     assignSpecialTiles() {
-         if (this.pathCoords.length <= 1) { console.warn("Cannot assign special tiles: Path is too short or empty."); return; }
-         const pathIndices = Array.from(Array(this.pathCoords.length).keys()); 
-         pathIndices.shift(); 
-         Phaser.Utils.Array.Shuffle(pathIndices); 
-         this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] }; 
-         const placeTile = (type, count) => {
-             let placed = 0;
-             while(placed < count && pathIndices.length > 0) {
-                 const index = pathIndices.pop();
-                 if (index === undefined) break;
-                 const coord = this.pathCoords[index];
-                 if (coord && this.grid[coord.y]?.[coord.x] === TILE_TYPE_PATH) { 
-                     this.grid[coord.y][coord.x] = type;
-                     this.specialTileCoords[type].push(coord);
-                     placed++;
-                 }
-             }
-             if (placed < count) console.warn(`Could only place ${placed}/${count} tiles of type ${type}.`);
-         };
-         placeTile(TILE_TYPE_ENEMY2, 2);
-         placeTile(TILE_TYPE_ENEMY3, 3);
-         placeTile(TILE_TYPE_ENEMY5, 1);
-     }
-    updatePathCoordsWithOffset() {
-         if (!this.pathCoords || this.pathCoords.length === 0) { this.pathCoordsWithOffset = []; console.warn("updatePathCoordsWithOffset skipped: pathCoords is empty."); return; }
-        this.pathCoordsWithOffset = this.pathCoords.map(coord => { if (!coord || typeof coord.x !== 'number' || typeof coord.y !== 'number') { console.warn("Invalid coordinate in pathCoords during offset update:", coord); return null; } return new Phaser.Math.Vector2( coord.x * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_X, coord.y * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_Y ); }).filter(v => v !== null); 
-         if (this.pathCoordsWithOffset.length > 0) { 
-             this.pathCoordsWithOffset.push(this.pathCoordsWithOffset[0]);
-         } else if (this.pathCoords.length > 0) { console.error("FATAL: pathCoordsWithOffset became empty after filtering invalid coordinates!"); }
-    }
-    drawTiles(gameWidth, gameHeight) {
-        const bgGraphics = this.add.graphics(); if(this.mapGraphics) this.mapGraphics.add(bgGraphics);
-        bgGraphics.fillStyle(0x000000).fillRect(0, 0, gameWidth, gameHeight); 
-        for (let y = 0; y < this.grid.length; y++) {
-            for (let x = 0; x < (this.grid[y]?.length || 0); x++) {
-                 const tileType = this.grid[y][x];
-                 if (tileType >= TILE_TYPE_PATH) {
-                    const tileX = x * this.TILE_SIZE + this.MAP_OFFSET_X;
-                    const tileY = y * this.TILE_SIZE + this.MAP_OFFSET_Y;
-                    let fillColor;
-                    switch(tileType) {
-                        case TILE_TYPE_START: fillColor = 0x90ee90; break;
-                        case TILE_TYPE_ENEMY2: fillColor = 0x0000ff; break;
-                        case TILE_TYPE_ENEMY3: fillColor = 0x00ff00; break;
-                        case TILE_TYPE_ENEMY5: fillColor = 0x800080; break;
-                        case TILE_TYPE_PATH: default: fillColor = 0x555555; break;
-                    }
-                    const tileGraphics = this.add.graphics(); if(this.mapGraphics) this.mapGraphics.add(tileGraphics);
-                    tileGraphics.fillStyle(fillColor).fillRect(tileX, tileY, this.TILE_SIZE, this.TILE_SIZE).lineStyle(1, 0x8B4513).strokeRect(tileX, tileY, this.TILE_SIZE, this.TILE_SIZE);
-                 }
-            }
-        }
-    }
-    
-    // (v8.4와 동일 - 전투 시작 시점)
-    moveHero() {
-        if (!this.hero || !this.hero.body || !this.pathCoordsWithOffset || this.pathCoordsWithOffset.length <= 1) return;
-        if(this.pathIndex < 0 || this.pathIndex >= this.pathCoordsWithOffset.length) { this.pathIndex = 0; if (this.pathCoordsWithOffset.length === 0) return; }
-        const targetPos = this.pathCoordsWithOffset[this.pathIndex];
-        if (!targetPos || typeof targetPos.x !== 'number' || typeof targetPos.y !== 'number') { this.pathIndex = (this.pathIndex + 1) % this.pathCoordsWithOffset.length; return; }
-        const distance = Phaser.Math.Distance.Between(this.hero.x, this.hero.y, targetPos.x, targetPos.y);
-        if (distance < 4) {
-             let currentGridIndex = this.pathIndex;
-             if (this.pathIndex === this.pathCoordsWithOffset.length - 1) {
-                 currentGridIndex = 0;
-             }
-             const arrivedCoord = this.pathCoords[currentGridIndex]; 
-             if (arrivedCoord) {
-                 const combatStarted = this.checkEnemiesAtTile(arrivedCoord.x, arrivedCoord.y);
-                 if (combatStarted) {
-                     return; 
-                 }
-             }
-             if (this.pathIndex === this.pathCoordsWithOffset.length - 1) { 
-                 this.pathIndex = 0; 
-                 this.spawnEnemy5(); 
-             } else {
-                this.pathIndex++;
-             }
-            this.tilesMovedTotal++;
-            this.tilesMovedSinceLastDay++; 
-            if (this.tilesMovedSinceLastDay >= 12) {
-                this.advanceDay();
-            }
-        } else {
-            this.physics.moveTo(this.hero, targetPos.x, targetPos.y, 150); 
-        }
-    }
-    checkEnemiesAtTile(gridX, gridY) {
-         if (this.startingCombat || this.registry.get('isPaused')) return false; 
-         const tileCenterX = gridX * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_X;
-         const tileCenterY = gridY * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_Y;
-         let enemiesOnTile = [];
-         if (this.enemyTriggers && this.enemyTriggers.getChildren) {
-             this.enemyTriggers.getChildren().forEach(enemy => {
-                 if (enemy.active && 
-                     Phaser.Math.Distance.Between(tileCenterX, tileCenterY, enemy.x, enemy.y) < this.TILE_SIZE * 0.5)
-                 {
-                     enemiesOnTile.push(enemy);
-                 }
-             });
-         }
-         if (enemiesOnTile.length > 0) {
-             this.startCombat(enemiesOnTile);
-             return true; 
-         }
-         return false; 
-    }
-    advanceDay() {
-        if (this.registry.get('isPaused')) return; 
-        this.day++; this.tilesMovedSinceLastDay = 0; console.log(`Day ${this.day} started`);
-        const uiScene = this.scene.get('UIScene'); if(uiScene && uiScene.events && this.scene.isActive('UIScene')) { uiScene.events.emit('updateDay', this.day); }
-        if (this.hero) { this.hero.hp = this.hero.maxHp; if(uiScene && uiScene.events && this.scene.isActive('UIScene')) { uiScene.events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp); } } 
-        else if (this.heroData){ this.heroData.hp = this.heroData.maxHp; }
-        this.spawnEnemy1(); if (this.day % 2 === 0) this.spawnEnemy2(); if (this.day % 3 === 0) this.spawnEnemy3();
-    }
-    spawnEnemy1() { 
-        if (Math.random() < 0.10) { if (this.pathCoordsWithOffset.length < 2) return; const spawnIndex = Phaser.Math.Between(1, this.pathCoordsWithOffset.length - 2); const spawnPos = this.pathCoordsWithOffset[spawnIndex]; if(spawnPos) this.spawnEnemyTriggerAt('goblin', spawnPos.x, spawnPos.y); }
-    }
-    spawnEnemy2() { 
-        this.specialTileCoords[TILE_TYPE_ENEMY2].forEach(coord => { const spawnPos = this.getPixelCoord(coord); if(spawnPos) this.spawnEnemyTriggerAt('skeleton', spawnPos.x, spawnPos.y); });
-    }
-    spawnEnemy3() { 
-        this.specialTileCoords[TILE_TYPE_ENEMY3].forEach(coord => { const spawnPos = this.getPixelCoord(coord); if(spawnPos) this.spawnEnemyTriggerAt('orc', spawnPos.x, spawnPos.y); });
-    }
-    spawnEnemy5() { 
-         if (this.specialTileCoords[TILE_TYPE_ENEMY5].length > 0) { const coord = this.specialTileCoords[TILE_TYPE_ENEMY5][0]; const spawnPos = this.getPixelCoord(coord); if (spawnPos) { for(let i=0; i<3; i++) { const offsetX = Phaser.Math.Between(-this.TILE_SIZE * 0.2, this.TILE_SIZE * 0.2); const offsetY = Phaser.Math.Between(-this.TILE_SIZE * 0.2, this.TILE_SIZE * 0.2); this.spawnEnemyTriggerAt('slime', spawnPos.x + offsetX, spawnPos.y + offsetY); } } }
-    }
-    spawnEnemyTriggerAt(enemyKey, x, y) {
-        if (!EnemyData[enemyKey]) return;
-        if (!this.enemyTriggers) {
-            console.warn("Cannot spawn enemy, enemyTriggers group is null (likely during shutdown)");
-            return;
-        }
-        const enemy = this.enemyTriggers.create(x, y, 'pixel').setDisplaySize(this.TILE_SIZE * 0.4, this.TILE_SIZE * 0.4).setTint(EnemyData[enemyKey].color);
-        enemy.enemyKey = enemyKey; enemy.setDepth(1); 
-    }
-    getPixelCoord(gridCoord) {
-        if (!gridCoord || typeof gridCoord.x !== 'number' || typeof gridCoord.y !== 'number') return null;
-        return new Phaser.Math.Vector2( gridCoord.x * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_X, gridCoord.y * this.TILE_SIZE + this.TILE_SIZE / 2 + this.MAP_OFFSET_Y );
-    }
-    startCombat(enemiesToFight) {
-        if (this.startingCombat || !enemiesToFight || enemiesToFight.length === 0) { 
-             return; 
-        }
-        this.startingCombat = true;
-        if(this.hero && this.hero.body) this.hero.body.stop(); 
-        let combatants = [];
-        enemiesToFight.forEach(enemy => {
-            if (enemy.active && EnemyData[enemy.enemyKey]) { 
-                combatants.push(JSON.parse(JSON.stringify(EnemyData[enemy.enemyKey]))); 
-                enemy.destroy(); 
-            }
-        });
-        if (combatants.length === 0) { 
-             this.startingCombat = false;
-             return;
-        }
-        console.log(`Starting combat with ${combatants.length} enemies.`);
-        const heroCurrentHp = this.hero ? this.hero.hp : this.heroData.hp;
-        const heroCurrentMaxHp = this.hero ? this.hero.maxHp : this.heroData.maxHp;
-        const combatData = {
-            enemies: combatants, 
-            heroHp: heroCurrentHp,
-            heroMaxHp: heroCurrentMaxHp,
-            heroAttackTime: this.heroData.attackTime 
-        };
-        this.scene.pause(); 
-        this.scene.launch('CombatScene', combatData);
-    }
-    
-    // (v8.5와 동일 - 재시작 버그 수정)
+    
+    // [ ... 이하 generateRandomLoop, setGrid, getPathNeighbors, generateDefaultLoop, ... ]
+    // [ ... assignSpecialTiles, updatePathCoordsWithOffset, drawTiles, moveHero, ... ]
+    // [ ... checkEnemiesAtTile, advanceDay, spawnEnemy1~5, spawnEnemyTriggerAt, ... ]
+    // [ ... getPixelCoord, startCombat ... ]
+    // [ v8.10과 동일한 함수들은 생략합니다. 아래 onCombatComplete만 수정하세요. ]
+
+    // [수정] ★★★ v8.11 변경점 ★★★
     onCombatComplete(data) {
         this.startingCombat = false; 
         
+        // [수정] 471줄 오류 원인: 'if (!this.hero)' 블록
+        // 씬이 종료되는 중(hero가 null)에 이벤트가 도착하면,
+        // 471줄의 (존재하지 않는) hasListeners 함수를 호출하여 오류 발생.
+        // 이 블록 전체를 'return;' 한 줄로 변경하여 오류를 수정합니다.
         if (!this.hero) { 
-             // Game Over 상태에서 R키 리스너가 중복 등록되지 않도록 (create와 겹칠 수 있음)
-             if(!this.input.keyboard.hasListeners('keydown-R')){
-                 this.input.keyboard.on('keydown-R', this.restartGame, this);
-             }
-             return; 
+             return; // hero가 없으면 아무것도 하지 않고 종료
         }
 
         this.hero.hp = data.heroHp;
@@ -464,13 +160,13 @@ class GameScene extends Phaser.Scene {
 
             this.hero.destroy(); 
             this.hero = null; 
+             // [수정] 이제 이 코드가 정상적으로 실행됩니다.
              const gameOverText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2, 'GAME OVER\nPress "R" to Restart', { fontSize: '40px', fill: '#ff0000', align: 'center', backgroundColor: '#000000' }).setOrigin(0.5);
              gameOverText.setDepth(10); 
              
-             // Game Over 시 R키 리스너 등록 (create에 이미 등록했으므로 중복될 수 있으나, shutdown에서 모두 제거하므로 안전함)
-             if(!this.input.keyboard.hasListeners('keydown-R')){
-                 this.input.keyboard.on('keydown-R', this.restartGame, this);
-             }
+             // [수정] 493줄 오류 원인: 'hasListeners'를 사용한 if문 제거.
+             // 'R'키 리스너는 create에서 이미 등록했으므로 여기서 또 등록할 필요가 없습니다.
+        
         } else {
             this.scene.resume();
             console.log("GameScene calling redraw after combat");
@@ -480,13 +176,13 @@ class GameScene extends Phaser.Scene {
         }
     }
     
-    // [수정] v8.5의 'isActive' 체크 제거 (재시작 버그 수정)
+    // [v8.10과 동일]
     restartGame(event) {
-        // if (!this.scene.isActive()) return; // <-- 이 줄 제거함
+        // if (!this.scene.isActive()) return; // <-- v8.5에서 이 줄이 문제였음 (제거됨)
         
         console.log("Restarting game...");
-        // shutdown에서 리스너를 제거하므로, 여기서 굳이 off 할 필요는 없지만
-        // 안전을 위해 유지합니다.
+        
+        // shutdown()에서 리스너를 제거하므로 사실상 2중 제거지만, 안전을 위해 유지
         this.input.keyboard.off('keydown-R', this.restartGame, this); 
         this.input.keyboard.off('keydown-SPACE', this.togglePause, this); 
         
@@ -860,3 +556,4 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
