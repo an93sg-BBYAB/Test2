@@ -1,6 +1,6 @@
-// game.js (v8.8 - v8.7의 모든 오타 및 코드 잘림 수정)
+// game.js (v8.9 - 755줄 's' 오타 수정)
 
-// --- 데이터 정의 ---
+// --- 데이터 정의 --- (동일)
 const ItemData = {
     'sword':    { name: '검', type: 'weapon', color: 0x8B4513 }, 'shield':   { name: '방패', type: 'shield', color: 0x8B4513 },
     'helmet':   { name: '투구', type: 'helmet', color: 0x8B4513 }, 'armor':    { name: '갑옷', type: 'armor', color: 0x8B4513 },
@@ -67,14 +67,11 @@ class GameScene extends Phaser.Scene {
              } else { console.error("FATAL: Failed to generate even default loop!"); }
         }
         this.input.keyboard.on('keydown-SPACE', this.togglePause, this);
-        
-        // '언제든' R키로 재시작하는 기능 (v8.7에서 추가됨)
         this.input.keyboard.on('keydown-R', this.restartGame, this);
 
         console.log("GameScene create end");
     }
     
-    // (v8.4와 동일)
     shutdown() {
         console.log("GameScene shutdown");
         this.scale.off('resize', this.redraw, this);
@@ -94,7 +91,6 @@ class GameScene extends Phaser.Scene {
         this.registry.set('isPaused', newState); console.log("Pause Toggled:", newState);
     }
 
-    // (v8.4와 동일)
     redraw(gameSize) {
         console.log("GameScene redraw start", gameSize);
         if (!this.pathCoords || this.pathCoords.length === 0) { console.warn("GameScene redraw skipped: pathCoords is invalid."); return; }
@@ -118,7 +114,7 @@ class GameScene extends Phaser.Scene {
             const currentPos = this.pathCoordsWithOffset[this.pathIndex]; if (!currentPos) { console.error("Cannot reposition hero, current position is invalid!"); return; }
             this.hero.setPosition(currentPos.x, currentPos.y); this.hero.setDepth(1);
             if (this.hero.body) { this.hero.body.reset(currentPos.x, currentPos.y); }
-	         else if (this.hero.active) { console.log("Re-enabling physics body for hero"); this.physics.world.enable(this.hero); if(this.hero.body) this.hero.body.reset(currentPos.x, currentPos.y); }
+            else if (this.hero.active) { console.log("Re-enabling physics body for hero"); this.physics.world.enable(this.hero); if(this.hero.body) this.hero.body.reset(currentPos.x, currentPos.y); }
         }
         this.isInitialDrawComplete = true; console.log("GameScene redraw end");
     }
@@ -190,7 +186,7 @@ class GameScene extends Phaser.Scene {
         let cameFrom = null; 
         const startNeighbors = [];
         if (this.grid[startY]?.[startX+1] >= TILE_TYPE_PATH) startNeighbors.push({x: startX+1, y: startY});
-        if (this.grid[startY+1]?.[startX] >= TILE_TYPE_PATH) startNeighbors.push({x: startX, y: startY+1});
+is       if (this.grid[startY+1]?.[startX] >= TILE_TYPE_PATH) startNeighbors.push({x: startX, y: startY+1});
         if (this.grid[startY]?.[startX-1] >= TILE_TYPE_PATH) startNeighbors.push({x: startX-1, y: startY});
         if (this.grid[startY-1]?.[startX] >= TILE_TYPE_PATH) startNeighbors.push({x: startX, y: startY-1});
         if (startNeighbors.length < 2) { 
@@ -231,7 +227,7 @@ class GameScene extends Phaser.Scene {
                   this.generateDefaultLoop();
                   this.assignSpecialTiles();
                   return;
-             }
+em           }
             cameFrom = { ...current };
             current = { ...next };
         } while ((current.x !== startX || current.y !== startY) && this.pathCoords.length <= (this.GRID_WIDTH * this.GRID_HEIGHT));
@@ -480,10 +476,9 @@ class GameScene extends Phaser.Scene {
         }
     }
     
-    // (v8.4와 동일)
+    // [수정] v8.5의 'isActive' 체크 제거 (재시작 버그 수정)
     restartGame(event) {
-         // [수정] v8.5에서 'isActive' 체크가 일시정지시 문제를 일으켜서 제거
-        // if (!this.scene.isActive()) return; // <-- 이 줄이 원인이었으므로 제거!
+        // if (!this.scene.isActive()) return; // <-- 이 줄 제거
         
         console.log("Restarting game...");
         this.input.keyboard.off('keydown-R', this.restartGame, this); 
@@ -495,7 +490,7 @@ class GameScene extends Phaser.Scene {
     }
 } // End of GameScene class
 
-// --- 2. 전투 씬 --- (v8.4와 동일, v8.7 오타 제거)
+// --- 2. 전투 씬 --- (v8.8에서 오타 모두 제거)
 class CombatScene extends Phaser.Scene {
     constructor() {
         super('CombatScene');
@@ -635,7 +630,7 @@ class CombatScene extends Phaser.Scene {
             duration: 100, ease: 'Power1', yoyo: true,
             onComplete: () => {
                 if (!this.combatRunning) return; 
-                this.enemyHps[targetIndex] -= 10;s 
+                this.enemyHps[targetIndex] -= 10;
                 this.updateHpBars(); 
                 if (this.enemyHps[targetIndex] <= 0) {
                     this.defeatEnemy(targetIndex); 
@@ -652,7 +647,7 @@ class CombatScene extends Phaser.Scene {
             x: enemyIllust.x - 20, 
             duration: 100, ease: 'Power1', yoyo: true,
             onComplete: () => {
-                if (!this.combatRunning) return; 
+  g              if (!this.combatRunning) return; 
                 this.heroHp -= enemyAtk;
                 this.updateHpBars(); 
                 if (this.heroHp <= 0) { this.defeatHero(); }
@@ -681,11 +676,11 @@ class CombatScene extends Phaser.Scene {
                 if (allEnemiesDefeated) {
                      this.combatRunning = false; 
                     console.log("All enemies defeated!");
-                     if (Math.random() < this.enemiesData[index].dropRate) {
+  nbsp;                if (Math.random() < this.enemiesData[index].dropRate) {
                          loot = Phaser.Math.RND.pick(ALL_ITEM_KEYS);
                      }
                     if (loot) this.dropItemAnimation(loot, enemyIllust.x, enemyIllust.y);
-	               else this.endCombat(null);
+                    else this.endCombat(null);
                 } 
             }
         });
@@ -722,7 +717,7 @@ class CombatScene extends Phaser.Scene {
     }
 } // End of CombatScene class
 
-// --- 3. UI 씬 --- (v8.4와 동일, v8.7 오타 제거)
+// --- 3. UI 씬 --- (v8.9 - 755줄 's' 오타 수정)
 class UIScene extends Phaser.Scene {
     constructor() {
         super('UIScene');
@@ -752,7 +747,8 @@ class UIScene extends Phaser.Scene {
                 this.events.on('updateHeroHP', this.updateHeroHP, this); 
                 if (gameScene.registry && gameScene.registry.events) {
                     console.log("UIScene attaching registry listener");
-                    gameScene.registry.events.on('changedata-isPaused', this.updatePauseText, this);s 
+                    // [수정] ★★★ v8.8의 's' 오타 제거 ★★★
+                    gameScene.registry.events.on('changedata-isPaused', this.updatePauseText, this);
                     this.updatePauseText(); 
                 } else {
                      console.warn("UIScene create: GameScene registry not ready for pause listener after delay.");
@@ -772,7 +768,7 @@ class UIScene extends Phaser.Scene {
     shutdown() {
         console.log("UIScene shutdown");
         this.scale.off('resize', this.redraw, this);
-        const gameScene = this.scene.get('GameScene'); 
+s       const gameScene = this.scene.get('GameScene'); 
         if (gameScene) {
             if (gameScene.events) {
                 gameScene.events.off('updateDay', this.onUpdateDay, this);
@@ -785,7 +781,7 @@ class UIScene extends Phaser.Scene {
         this.events.off('addItem', this.addItem, this);
         if (this.uiElements) this.uiElements.destroy(true);
         if (this.itemIcons) this.itemIcons.destroy(true);
-        this.uiElements = null;
+  S     this.uiElements = null;
         this.itemIcons = null;
     }
     onUpdateDay(day) {
@@ -802,13 +798,13 @@ class UIScene extends Phaser.Scene {
     redraw(gameSize) {
          console.log("UIScene redraw start", gameSize); const gameWidth = gameSize ? gameSize.width : this.cameras.main.width; const gameHeight = gameSize ? gameSize.height : this.cameras.main.height; if (gameWidth <= 1 || gameHeight <= 1) { console.warn("UIScene redraw skipped due to invalid size:", gameWidth, gameHeight); return; } 
          if (this.uiElements) this.uiElements.clear(true, true); else this.uiElements = this.add.group();
-         this.inventorySlots = []; this.equipSlots = {}; this.UI_START_X = gameWidth - this.UI_WIDTH; const topBar = this.add.graphics().fillStyle(0x666666).fillRect(0, 0, gameWidth, this.TOP_UI_HEIGHT); this.uiElements.add(topBar); const text1 = this.add.text(10, 15, '시간의 흐름', { fontSize: '10px', fill: '#000000' }); const gameSceneRef = this.scene.get('GameScene'); const currentDay = (gameSceneRef && typeof gameSceneRef.day === 'number') ? gameSceneRef.day : 1; this.dayText = this.add.text(80, 15, `Day: ${currentDay}`, { fontSize: '14px', fill: '#000000' }); const text3 = this.add.text(200, 15, '계획', { fontSize: '10px', fill: '#000000' }); this.pauseText = this.add.text(gameWidth / 2, this.TOP_UI_HEIGHT / 2, '진행', this.pauseTextStyle).setOrigin(0.5); const text5 = this.add.text(this.UI_START_X - 150 > 500 ? this.UI_START_X - 150 : 500, 15, '몇 번째 루프', { fontSize: '10px', fill: '#000000' }); this.uiElements.addMultiple([text1, this.dayText, text3, this.pauseText, text5]); const rightBar = this.add.graphics().fillStyle(0x333333).fillRect(this.UI_START_X, 0, this.UI_WIDTH, gameHeight); this.uiElements.add(rightBar); const RIGHT_UI_START_X = this.UI_START_X + this.UI_PADDING; let currentY = this.TOP_UI_HEIGHT + this.UI_PADDING; this.heroHpText = this.add.text(RIGHT_UI_START_X, currentY, 'HP: 100/100', this.hpStaTextStyle); currentY += 18; this.hpBarWidth = this.UI_WIDTH - (this.UI_PADDING * 2) - 20; this.hpBarHeight = 8; this.heroHpBarBG = this.add.rectangle(RIGHT_UI_START_X, currentY, this.hpBarWidth, this.hpBarHeight, 0xff0000).setOrigin(0); this.heroHpBarFill = this.add.rectangle(RIGHT_UI_START_X, currentY, this.hpBarWidth, this.hpBarHeight, 0x00ff00).setOrigin(0); currentY += 15; const staText = this.add.text(RIGHT_UI_START_X, currentY, 'STA: 100/100', { fontSize: '12px', fill: '#B09253' }); currentY += 30; this.uiElements.addMultiple([this.heroHpText, this.heroHpBarBG, this.heroHpBarFill, staText]); const EQUIP_SLOT_SIZE = 36; const EQUIP_SLOT_GAP_X = 5; const EQUIP_SLOT_GAP_Y = 10; const helmetLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'helmet', this.labelStyle); this.equipSlots['helmet'] = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'helmet', EQUIP_SLOT_SIZE); currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10; const armorLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'armor', this.labelStyle); this.equipSlots['armor']  = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'armor', EQUIP_SLOT_SIZE); const weaponLabel = this.add.text(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY, 'weapon', this.labelStyle); this.equipSlots['weapon'] = this.createSlot(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY + 15, 'weapon', EQUIP_SLOT_SIZE); const shieldLabel = this.add.text(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY, 'shield', this.labelStyle); this.equipSlots['shield'] = this.createSlot(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY + 15, 'shield', EQUIP_SLOT_SIZE); currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10; const glovesLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'gloves', this.labelStyle); this.equipSlots['gloves'] = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'gloves', EQUIP_SLOT_SIZE); const beltLabel = this.add.text(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY, 'belt', this.labelStyle); this.equipSlots['belt']   = this.createSlot(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY + 15, 'belt', EQUIP_SLOT_SIZE); const bootsLabel = this.add.text(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY, 'boots', this.labelStyle); this.equipSlots['boots']  = this.createSlot(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY + 15, 'boots', EQUIP_SLOT_SIZE); currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10; this.uiElements.addMultiple([helmetLabel, armorLabel, weaponLabel, shieldLabel, glovesLabel, beltLabel, bootsLabel]); const statsLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '능력치', this.inventoryLabelStyle); currentY += 20; const damageLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '피해: +X', this.hpStaTextStyle); currentY += 15; const defenseLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '방어: +Y', this.hpStaTextStyle); currentY += 25; this.uiElements.addMultiple([statsLabel, damageLabel, defenseLabel]); const invLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'Inventory', this.inventoryLabelStyle); currentY += 20; this.uiElements.add(invLabel); const INV_SLOT_SIZE = 36; const INV_SLOT_GAP = 5; let slotIndex = 0; for (let y = 0; y < 4; y++) { for (let x = 0; x < 4; x++) { const slotX = RIGHT_UI_START_X + 5 + x * (INV_SLOT_SIZE + INV_SLOT_GAP); const slotY = currentY + y * (INV_SLOT_SIZE + INV_SLOT_GAP); this.inventorySlots.push(this.createSlot(slotX, slotY, slotIndex++, INV_SLOT_SIZE)); } } this.selectedHighlight = this.add.graphics().lineStyle(2, 0xcc99ff); this.selectedHighlight.visible = false; this.errorText = this.add.text(this.UI_START_X + this.UI_WIDTH / 2, gameHeight - 30, '', { fontSize: '10px', fill: '#ff0000' }).setOrigin(0.5); this.uiElements.addMultiple([this.selectedHighlight, this.errorText]); let initialHp = 100, initialMaxHp = 100; if (gameSceneRef && gameSceneRef.heroData) { initialHp = gameSceneRef.heroData.hp; initialMaxHp = gameSceneRef.heroData.maxHp; } if (gameSceneRef && gameSceneRef.hero) { initialHp = gameSceneRef.hero.hp; initialMaxHp = gameSceneRef.hero.maxHp; } this.updateHeroHP(initialHp, initialMaxHp); if (gameSceneRef && gameSceneRef.registry) { this.updatePauseText(); } this.refreshInventory(); console.log("UIScene redraw end");
+is       this.inventorySlots = []; this.equipSlots = {}; this.UI_START_X = gameWidth - this.UI_WIDTH; const topBar = this.add.graphics().fillStyle(0x666666).fillRect(0, 0, gameWidth, this.TOP_UI_HEIGHT); this.uiElements.add(topBar); const text1 = this.add.text(10, 15, '시간의 흐름', { fontSize: '10px', fill: '#000000' }); const gameSceneRef = this.scene.get('GameScene'); const currentDay = (gameSceneRef && typeof gameSceneRef.day === 'number') ? gameSceneRef.day : 1; this.dayText = this.add.text(80, 15, `Day: ${currentDay}`, { fontSize: '14px', fill: '#000000' }); const text3 = this.add.text(200, 15, '계획', { fontSize: '10px', fill: '#000000' }); this.pauseText = this.add.text(gameWidth / 2, this.TOP_UI_HEIGHT / 2, '진행', this.pauseTextStyle).setOrigin(0.5); const text5 = this.add.text(this.UI_START_X - 150 > 500 ? this.UI_START_X - 150 : 500, 15, '몇 번째 루프', { fontSize: '10px', fill: '#000000' }); this.uiElements.addMultiple([text1, this.dayText, text3, this.pauseText, text5]); const rightBar = this.add.graphics().fillStyle(0x333333).fillRect(this.UI_START_X, 0, this.UI_WIDTH, gameHeight); this.uiElements.add(rightBar); const RIGHT_UI_START_X = this.UI_START_X + this.UI_PADDING; let currentY = this.TOP_UI_HEIGHT + this.UI_PADDING; this.heroHpText = this.add.text(RIGHT_UI_START_X, currentY, 'HP: 100/100', this.hpStaTextStyle); currentY += 18; this.hpBarWidth = this.UI_WIDTH - (this.UI_PADDING * 2) - 20; this.hpBarHeight = 8; this.heroHpBarBG = this.add.rectangle(RIGHT_UI_START_X, currentY, this.hpBarWidth, this.hpBarHeight, 0xff0000).setOrigin(0); this.heroHpBarFill = this.add.rectangle(RIGHT_UI_START_X, currentY, this.hpBarWidth, this.hpBarHeight, 0x00ff00).setOrigin(0); currentY += 15; const staText = this.add.text(RIGHT_UI_START_X, currentY, 'STA: 100/100', { fontSize: '12px', fill: '#B09253' }); currentY += 30; this.uiElements.addMultiple([this.heroHpText, this.heroHpBarBG, this.heroHpBarFill, staText]); const EQUIP_SLOT_SIZE = 36; const EQUIP_SLOT_GAP_X = 5; const EQUIP_SLOT_GAP_Y = 10; const helmetLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'helmet', this.labelStyle); this.equipSlots['helmet'] = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'helmet', EQUIP_SLOT_SIZE); currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10; const armorLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'armor', this.labelStyle); this.equipSlots['armor']  = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'armor', EQUIP_SLOT_SIZE); const weaponLabel = this.add.text(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY, 'weapon', this.labelStyle); this.equipSlots['weapon'] = this.createSlot(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY + 15, 'weapon', EQUIP_SLOT_SIZE); const shieldLabel = this.add.text(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY, 'shield', this.labelStyle); this.equipSlots['shield'] = this.createSlot(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY + 15, 'shield', EQUIP_SLOT_SIZE); currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10; const glovesLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'gloves', this.labelStyle); this.equipSlots['gloves'] = this.createSlot(RIGHT_UI_START_X + 10, currentY + 15, 'gloves', EQUIP_SLOT_SIZE); const beltLabel = this.add.text(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY, 'belt', this.labelStyle); this.equipSlots['belt']   = this.createSlot(RIGHT_UI_START_X + 10 + EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X, currentY + 15, 'belt', EQUIP_SLOT_SIZE); const bootsLabel = this.add.text(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY, 'boots', this.labelStyle); this.equipSlots['boots']  = this.createSlot(RIGHT_UI_START_X + 10 + (EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_X) * 2, currentY + 15, 'boots', EQUIP_SLOT_SIZE); currentY += EQUIP_SLOT_SIZE + EQUIP_SLOT_GAP_Y + 10; this.uiElements.addMultiple([helmetLabel, armorLabel, weaponLabel, shieldLabel, glovesLabel, beltLabel, bootsLabel]); const statsLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '능력치', this.inventoryLabelStyle); currentY += 20; const damageLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '피해: +X', this.hpStaTextStyle); currentY += 15; const defenseLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, '방어: +Y', this.hpStaTextStyle); currentY += 25; this.uiElements.addMultiple([statsLabel, damageLabel, defenseLabel]); const invLabel = this.add.text(RIGHT_UI_START_X + 10, currentY, 'Inventory', this.inventoryLabelStyle); currentY += 20; this.uiElements.add(invLabel); const INV_SLOT_SIZE = 36; const INV_SLOT_GAP = 5; let slotIndex = 0; for (let y = 0; y < 4; y++) { for (let x = 0; x < 4; x++) { const slotX = RIGHT_UI_START_X + 5 + x * (INV_SLOT_SIZE + INV_SLOT_GAP); const slotY = currentY + y * (INV_SLOT_SIZE + INV_SLOT_GAP); this.inventorySlots.push(this.createSlot(slotX, slotY, slotIndex++, INV_SLOT_SIZE)); } } this.selectedHighlight = this.add.graphics().lineStyle(2, 0xcc99ff); this.selectedHighlight.visible = false; this.errorText = this.add.text(this.UI_START_X + this.UI_WIDTH / 2, gameHeight - 30, '', { fontSize: '10px', fill: '#ff0000' }).setOrigin(0.5); this.uiElements.addMultiple([this.selectedHighlight, this.errorText]); let initialHp = 100, initialMaxHp = 100; if (gameSceneRef && gameSceneRef.heroData) { initialHp = gameSceneRef.heroData.hp; initialMaxHp = gameSceneRef.heroData.maxHp; } if (gameSceneRef && gameSceneRef.hero) { initialHp = gameSceneRef.hero.hp; initialMaxHp = gameSceneRef.hero.maxHp; } this.updateHeroHP(initialHp, initialMaxHp); if (gameSceneRef && gameSceneRef.registry) { this.updatePauseText(); } this.refreshInventory(); console.log("UIScene redraw end");
     }
     updateHeroHP(hp, maxHp) {
         if (!this.scene.isActive() || !this.heroHpText || !this.heroHpBarFill) return;
         this.heroHpText.setText(`HP: ${hp.toFixed(0)}/${maxHp}`); 
         const percent = Math.max(0, hp / maxHp);
-        if (typeof this.hpBarWidth === 'number') { this.heroHpBarFill.width = this.hpBarWidth * percent; } 
+        if (typeof this.hpBarWidth === 'number') { this.heroHpBarFill.width = this.hpBarWidth * percent; }s 
         else { console.warn("hpBarWidth is not defined in updateHeroHP"); }
     }
     createSlot(x, y, key, size = 40) {
@@ -823,7 +819,7 @@ class UIScene extends Phaser.Scene {
     addItem(itemKey) {
         if (!this.scene.isActive()) return;
         const emptySlotIndex = this.inventory.indexOf(null); if (emptySlotIndex !== -1) { this.inventory[emptySlotIndex] = itemKey; this.refreshInventory(); } else { this.showError('인벤토리가 가득 찼습니다!'); }
-    }
+em   }
     refreshInventory() {
          if (!this.itemIcons) { console.warn("Item icon group not ready in refreshInventory"); return; } 
          this.itemIcons.clear(true, true); 
