@@ -202,7 +202,7 @@ this.input.keyboard.on('keydown-R', this.restartGame, this);
         do {
             this.pathCoords.push({ ...current });
             const neighbors = this.getPathNeighbors(current.x, current.y);
-      *        let next = null;
+               let next = null;
             if (neighbors.length !== 2 && !(current.x === startX && current.y === startY && neighbors.length > 0)) { 
                  console.error(`Path generation error: Invalid neighbor count (${neighbors.length}) at`, current);
                   this.generateDefaultLoop();
@@ -860,3 +860,4 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
