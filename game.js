@@ -391,8 +391,9 @@ class GameScene extends Phaser.Scene {
                 this.advanceDay();
             }
         } else {
-            this.physics.moveTo(this.hero, targetPos.x, targetPos.y, 150); 
-        }
+            const gameSpeed = this.registry.get('gameSpeed') || 1;
+            this.physics.moveTo(this.hero, targetPos.x, targetPos.y, 150 * gameSpeed); // [수정] 150 -> 150 * gameSpeed
+        }
     }
     checkEnemiesAtTile(gridX, gridY) {
          if (this.startingCombat || this.registry.get('isPaused')) return false; 
@@ -917,6 +918,10 @@ class UIScene extends Phaser.Scene {
         this.uiElements = null;
         this.itemIcons = null;
     }
+    updateSpeedText(parent, key, data) {
+    if (this.speedText) {
+        this.speedText.setText(`${data}X`);
+    }
     onUpdateDay(day) {
         if (this.dayText) this.dayText.setText(`Day: ${day}`);
     }
@@ -924,17 +929,13 @@ class UIScene extends Phaser.Scene {
          // [수정] 씬이 활성화 상태가 아니면(종료 중이면) 즉시 중단
          if (!this.scene.isActive()) return;
 
-         const gameScene = this.scene.get('GameScene');
-
-         // [수정] gameScene이 존재하고 'active' 상태일 때만 registry 값을 읽음
-         if(this.pauseText && gameScene && gameScene.scene.isActive()) { 
-            // gameScene.registry에서 읽어오는 것은 괜찮습니다.
-            const isPaused = gameScene.registry.get('isPaused');
+        if(this.pauseText && this.registry) { 
+            const isPaused = this.registry.get('isPaused');
             this.pauseText.setText(isPaused ? '중지' : '진행');
-         }
-    }
+         }    
+    }
     redraw(gameSize) {
-console.log("UIScene redraw start", gameSize); 
+        console.log("UIScene redraw start", gameSize); 
         const gameWidth = gameSize ? gameSize.width : this.cameras.main.width; 
         const gameHeight = gameSize ? gameSize.height : this.cameras.main.height; 
         if (gameWidth <= 1 || gameHeight <= 1) { console.warn("UIScene redraw skipped due to invalid size:", gameWidth, gameHeight); return; } 
@@ -1118,6 +1119,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
