@@ -919,8 +919,9 @@ class UIScene extends Phaser.Scene {
         this.itemIcons = null;
     }
     updateSpeedText(parent, key, data) {
-    if (this.speedText) {
-        this.speedText.setText(`${data}X`);
+            if (this.speedText) {
+                this.speedText.setText(`${data}X`);
+            }
     }
     onUpdateDay(day) {
         if (this.dayText) this.dayText.setText(`Day: ${day}`);
@@ -1119,6 +1120,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
