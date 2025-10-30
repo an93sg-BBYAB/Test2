@@ -342,6 +342,17 @@ class GameScene extends Phaser.Scene {
              if (this.pathIndex === this.pathCoordsWithOffset.length - 1) { 
                  this.pathIndex = 0; 
                  this.spawnEnemy5(); 
+                 
+                 // [추가] ★★★ 출발점 도착 시 체력 회복 ★★★
+                 if (this.hero) {
+                     this.hero.hp = this.hero.maxHp;
+                     const uiScene = this.scene.get('UIScene');
+                     if(uiScene && this.scene.isActive('UIScene')) {
+                         uiScene.events.emit('updateHeroHP', this.hero.hp, this.hero.maxHp);
+                     }
+                     console.log("Hero HP restored at start point.");
+                 }
+                 
              } else {
                 this.pathIndex++;
              }
@@ -483,16 +494,23 @@ class GameScene extends Phaser.Scene {
     
     // v8.5의 'isActive' 체크 제거 (재시작 버그 수정)
     restartGame(event) {
-        // if (!this.scene.isActive()) return; // <-- 이 줄이 제거된 상태여야 함
-        
-        console.log("Restarting game...");
+    // [수정] ★★★ 'queue' 오류 수정을 위해 재시작을 1 프레임 지연 ★★★
         
-        this.input.keyboard.off('keydown-R', this.restartGame, this);
+        // 1. 리스너를 즉시 제거하여 'R'키 중복 호출 방지
+        this.input.keyboard.off('keydown-R', this.restartGame, this); 
         this.input.keyboard.off('keydown-SPACE', this.togglePause, this); 
-        
-        this.scene.remove('UIScene'); 
-        this.scene.remove('CombatScene');
-        this.scene.start('GameScene'); 
+
+        // 2. 씬 파괴 및 재시작은 키보드 이벤트 처리가 끝난 다음 틱(tick)으로 지연
+        this.time.delayedCall(1, () => {
+            console.log("Restarting game (delayed call)...");
+                
+            // GameScene.shutdown()이 호출되어 어차피 모든 리스너가 제거되지만,
+            // 여기서 즉시 제거하는 것이 가장 안전합니다.
+            
+            this.scene.remove('UIScene'); 
+            this.scene.remove('CombatScene');
+            this.scene.start('GameScene'); 
+        }, [], this);
     }
 } // End of GameScene class
 
@@ -778,10 +796,10 @@ F             }
             if (gameScene.events) {
                 gameScene.events.off('updateDay', this.onUpdateDay, this);
             }
-            if (gameScene.registry && gameScene.registry.events) {
-                gameScene.registry.events.off('changedata-isPaused', this.updatePauseText, this);
-            }
+            if (this.registry && this.registry.events) {
+            this.registry.events.off('changedata-isPaused', this.updatePauseText, this);
         }
+
         this.events.off('updateHeroHP', this.updateHeroHP, this);
         this.events.off('addItem', this.addItem, this);
         if (this.uiElements) this.uiElements.destroy(true);
@@ -860,3 +878,4 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
