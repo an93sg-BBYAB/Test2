@@ -611,7 +611,7 @@ class CombatScene extends Phaser.Scene {
         const combatPanelX = (gameWidth - combatPanelWidth) / 2; const combatPanelY = (gameHeight - combatPanelHeight) / 2;
         this.add.graphics().fillStyle(0x000000, 0.7).fillRect(0, 0, gameWidth, gameHeight); 
         this.add.graphics().fillStyle(0x333333).fillRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight).lineStyle(2, 0x8B4513).strokeRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight);
-        this.heroIllust = this.add.image(combatPanelX + combatPanelWidth * 0.3, combatPanelY + combatPanelHeight * 0.5, 'hero_illust').setDisplaySize(120, 160).setOrigin(0.5);
+        this.heroIllust = this.add.image(combatPanelX + combatPanelWidth * 0.3, combatPanelY + combatPanelHeight * 0.5, 'hero_illust').setDisplaySize(240, 320).setOrigin(0.5);
         const hpBarWidth = 100; const hpBarHeight = 10;
         const heroHpBarX = this.heroIllust.x - hpBarWidth / 2; 
         const heroHpBarY = this.heroIllust.y - this.heroIllust.displayHeight / 2 - 25; 
@@ -1121,6 +1121,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
