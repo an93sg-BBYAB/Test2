@@ -35,6 +35,7 @@ class GameScene extends Phaser.Scene {
         const pixelData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wcAAwAB/epA8AAAAABJRU5ErkJggg==';
         if (!this.textures.exists('pixel')) { this.textures.addBase64('pixel', pixelData); }
         this.load.image('hero_illust', 'hero_illust.png');        // 전투 씬에서 사용할 영웅의 이미지
+        this.load.image('slime_illust', 'slime.png');             // 전투 씬에서 사용할 슬라임의 이미지
     }
 
     create() {
@@ -630,8 +631,18 @@ class CombatScene extends Phaser.Scene {
         this.enemiesData.forEach((enemyData, index) => {
             const enemyX = enemyStartX;
             const enemyY = (numEnemies > 1) ? (firstEnemyY + (enemySpacingY * index)) : (combatPanelY + combatPanelHeight / 2); 
-            const enemyIllust = this.add.image(enemyX, enemyY, 'pixel').setDisplaySize(100, 140).setTint(enemyData.color).setOrigin(0.5); 
-            const eHpBarX = enemyIllust.x - hpBarWidth / 2;
+            
+            let enemyIllust;
+            // 1. enemyData에 illustKey가 있고(ex: 'slime_illust') 1단계에서 로드에 성공했다면
+            if (enemyData.illustKey && this.textures.exists(enemyData.illustKey)) {
+                // 해당 키의 이미지(ex: 'slime_illust')를 사용 (setTint 제거)
+                enemyIllust = this.add.image(enemyX, enemyY, enemyData.illustKey).setDisplaySize(100, 140).setOrigin(0.5);
+            } else {
+                // 2. illustKey가 없거나 로드되지 않았다면 (기존 방식)
+                enemyIllust = this.add.image(enemyX, enemyY, 'pixel').setDisplaySize(100, 140).setTint(enemyData.color).setOrigin(0.5); 
+            }
+            
+            const eHpBarX = enemyIllust.x - hpBarWidth / 2;
             const eHpBarY = enemyIllust.y - enemyIllust.displayHeight / 2 - 25; 
             const eAttackGaugeY = eHpBarY + hpBarHeight + 2;
             this.enemyIllusts.push(enemyIllust);
@@ -1121,6 +1132,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
