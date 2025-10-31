@@ -34,6 +34,7 @@ class GameScene extends Phaser.Scene {
     preload() {
         const pixelData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wcAAwAB/epA8AAAAABJRU5ErkJggg==';
         if (!this.textures.exists('pixel')) { this.textures.addBase64('pixel', pixelData); }
+        this.load.image('hero_image', 'assets/my_hero.png');        // 전투 씬에서 사용할 영웅의 이미지
     }
 
     create() {
@@ -610,8 +611,8 @@ class CombatScene extends Phaser.Scene {
         const combatPanelX = (gameWidth - combatPanelWidth) / 2; const combatPanelY = (gameHeight - combatPanelHeight) / 2;
         this.add.graphics().fillStyle(0x000000, 0.7).fillRect(0, 0, gameWidth, gameHeight); 
         this.add.graphics().fillStyle(0x333333).fillRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight).lineStyle(2, 0x8B4513).strokeRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight);
-        this.heroIllust = this.add.image(combatPanelX + combatPanelWidth * 0.3, combatPanelY + combatPanelHeight * 0.5, 'pixel').setDisplaySize(120, 160).setTint(0x00ffff).setOrigin(0.5);
-        const hpBarWidth = 100; const hpBarHeight = 10;
+        this.heroIllust = this.add.image(combatPanelX + combatPanelWidth * 0.3, combatPanelY + combatPanelHeight * 0.5, 'hero_image').setDisplaySize(120, 160).setOrigin(0.5);
+        const hpBarWidth = 100; const hpBarHeight = 10;
         const heroHpBarX = this.heroIllust.x - hpBarWidth / 2; 
         const heroHpBarY = this.heroIllust.y - this.heroIllust.displayHeight / 2 - 25; 
         this.heroHpBarBG = this.add.rectangle(heroHpBarX, heroHpBarY, hpBarWidth, hpBarHeight, 0xff0000).setOrigin(0);
@@ -1120,6 +1121,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
