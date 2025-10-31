@@ -9,13 +9,13 @@ const ItemData = {
 };
 const ALL_ITEM_KEYS = Object.keys(ItemData);
 const EnemyData = {
-    'goblin':   { name: '고블린', hp: 30, atk: 5, color: 0x00aa00, dropRate: 0.10, illustKey: 'goblin_illust', attackTime: 1.0 },
-    'skeleton': { name: '해골',   hp: 50, atk: 3, color: 0xeeeeee, dropRate: 0.15, illustKey: 'skeleton_illust', attackTime: 1.0 },
+    'slime':   { name: '슬라임', hp: 20, atk: 3, color: 0x00aa00, dropRate: 0.10, illustKey: 'slime_illust', attackTime: 1.0 },
+    'goblin': { name: '고블린',   hp: 50, atk: 5, color: 0xeeeeee, dropRate: 0.15, illustKey: 'goblin_illust', attackTime: 1.0 },
     'orc':      { name: '오크',   hp: 80, atk: 8, color: 0x008800, dropRate: 0.20, illustKey: 'orc_illust',    attackTime: 1.0 },
-    'demon':    { name: '악마',   hp: 40, atk: 12, color: 0xcc0000, dropRate: 0.25, illustKey: 'demon_illust',  attackTime: 1.0 },
-    'slime':    { name: '슬라임', hp: 20, atk: 2, color: 0x00ffff, dropRate: 0.05, illustKey: 'slime_illust',    attackTime: 1.0 }
+    'demon':    { name: '악마',   hp: 400, atk: 12, color: 0xcc0000, dropRate: 0.25, illustKey: 'demon_illust',  attackTime: 1.0 },
+    'skeleton':    { name: '해골', hp: 50, atk: 10, color: 0x00ffff, dropRate: 0.05, illustKey: 'skeleton_illust',    attackTime: 1.0 }
 };
-const SPAWNABLE_ENEMY_KEYS = ['goblin', 'skeleton', 'orc', 'slime'];
+const SPAWNABLE_ENEMY_KEYS = ['slime', 'goblin', 'orc', 'skeleton' ];
 const TILE_TYPE_EMPTY = 0; const TILE_TYPE_PATH = 1; const TILE_TYPE_ENEMY2 = 2;
 const TILE_TYPE_ENEMY3 = 3; const TILE_TYPE_ENEMY5 = 5; const TILE_TYPE_START = 6;
 
@@ -437,16 +437,31 @@ class GameScene extends Phaser.Scene {
         this.spawnEnemy1(); if (this.day % 2 === 0) this.spawnEnemy2(); if (this.day % 3 === 0) this.spawnEnemy3();
     }
     spawnEnemy1() { 
-        if (Math.random() < 0.10) { if (this.pathCoordsWithOffset.length < 2) return; const spawnIndex = Phaser.Math.Between(1, this.pathCoordsWithOffset.length - 2); const spawnPos = this.pathCoordsWithOffset[spawnIndex]; if(spawnPos) this.spawnEnemyTriggerAt('goblin', spawnPos.x, spawnPos.y); }
+        if (Math.random() < 0.10) {
+                if (this.pathCoordsWithOffset.length < 2) return; 
+                const spawnIndex = Phaser.Math.Between(1, this.pathCoordsWithOffset.length - 2);
+                const spawnPos = this.pathCoordsWithOffset[spawnIndex]; if(spawnPos) this.spawnEnemyTriggerAt('slime', spawnPos.x, spawnPos.y); 
+        }
     }
     spawnEnemy2() { 
-        this.specialTileCoords[TILE_TYPE_ENEMY2].forEach(coord => { const spawnPos = this.getPixelCoord(coord); if(spawnPos) this.spawnEnemyTriggerAt('skeleton', spawnPos.x, spawnPos.y); });
+        this.specialTileCoords[TILE_TYPE_ENEMY2].forEach(coord => { const spawnPos = this.getPixelCoord(coord); 
+        if(spawnPos) this.spawnEnemyTriggerAt('goblin', spawnPos.x, spawnPos.y); });
     }
     spawnEnemy3() { 
-        this.specialTileCoords[TILE_TYPE_ENEMY3].forEach(coord => { const spawnPos = this.getPixelCoord(coord); if(spawnPos) this.spawnEnemyTriggerAt('orc', spawnPos.x, spawnPos.y); });
+        this.specialTileCoords[TILE_TYPE_ENEMY3].forEach(coord => { const spawnPos = this.getPixelCoord(coord); 
+        if(spawnPos) this.spawnEnemyTriggerAt('orc', spawnPos.x, spawnPos.y); });
     }
     spawnEnemy5() { 
-         if (this.specialTileCoords[TILE_TYPE_ENEMY5].length > 0) { const coord = this.specialTileCoords[TILE_TYPE_ENEMY5][0]; const spawnPos = this.getPixelCoord(coord); if (spawnPos) { for(let i=0; i<3; i++) { const offsetX = Phaser.Math.Between(-this.TILE_SIZE * 0.2, this.TILE_SIZE * 0.2); const offsetY = Phaser.Math.Between(-this.TILE_SIZE * 0.2, this.TILE_SIZE * 0.2); this.spawnEnemyTriggerAt('slime', spawnPos.x + offsetX, spawnPos.y + offsetY); } } }
+        if (this.specialTileCoords[TILE_TYPE_ENEMY5].length > 0) {
+                const coord = this.specialTileCoords[TILE_TYPE_ENEMY5][0];
+                const spawnPos = this.getPixelCoord(coord); if (spawnPos) { 
+                for(let i=0; i<3; i++) { 
+                        const offsetX = Phaser.Math.Between(-this.TILE_SIZE * 0.2, this.TILE_SIZE * 0.2); 
+                        const offsetY = Phaser.Math.Between(-this.TILE_SIZE * 0.2, this.TILE_SIZE * 0.2); 
+                        this.spawnEnemyTriggerAt('skeleton', spawnPos.x + offsetX, spawnPos.y + offsetY);
+                        }
+                }
+        }
     }
     spawnEnemyTriggerAt(enemyKey, x, y) {
         if (!EnemyData[enemyKey]) return;
@@ -1132,6 +1147,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
