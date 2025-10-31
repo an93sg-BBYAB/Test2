@@ -35,7 +35,7 @@ class GameScene extends Phaser.Scene {
         const pixelData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wcAAwAB/epA8AAAAABJRU5ErkJggg==';
         if (!this.textures.exists('pixel')) { this.textures.addBase64('pixel', pixelData); }
         this.load.image('hero_illust', 'hero_illust.png');        // 전투 씬에서 사용할 영웅의 이미지
-        this.load.image('slime_illust', 'slime.png');             // 전투 씬에서 사용할 슬라임의 이미지
+        this.load.image('slime_illust', 'slime_illust.png');             // 전투 씬에서 사용할 슬라임의 이미지
     }
 
     create() {
@@ -1147,6 +1147,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
