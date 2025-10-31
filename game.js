@@ -437,7 +437,7 @@ class GameScene extends Phaser.Scene {
         this.spawnEnemy1(); if (this.day % 2 === 0) this.spawnEnemy2(); if (this.day % 3 === 0) this.spawnEnemy3();
     }
     spawnEnemy1() { 
-        if (Math.random() < 0.10) {
+        if (Math.random() < 0.90) {
                 if (this.pathCoordsWithOffset.length < 2) return; 
                 const spawnIndex = Phaser.Math.Between(1, this.pathCoordsWithOffset.length - 2);
                 const spawnPos = this.pathCoordsWithOffset[spawnIndex]; if(spawnPos) this.spawnEnemyTriggerAt('slime', spawnPos.x, spawnPos.y); 
@@ -1147,6 +1147,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
