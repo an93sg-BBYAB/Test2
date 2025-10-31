@@ -627,7 +627,7 @@ class CombatScene extends Phaser.Scene {
         const combatPanelX = (gameWidth - combatPanelWidth) / 2; const combatPanelY = (gameHeight - combatPanelHeight) / 2;
         this.add.graphics().fillStyle(0x000000, 0.7).fillRect(0, 0, gameWidth, gameHeight); 
         this.add.graphics().fillStyle(0x333333).fillRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight).lineStyle(2, 0x8B4513).strokeRect(combatPanelX, combatPanelY, combatPanelWidth, combatPanelHeight);
-        this.heroIllust = this.add.image(combatPanelX + combatPanelWidth * 0.3, combatPanelY + combatPanelHeight * 0.5, 'hero_illust').setDisplaySize(240, 320).setOrigin(0.5);
+        this.heroIllust = this.add.image(combatPanelX + combatPanelWidth * 0.3, combatPanelY + combatPanelHeight * 0.5, 'hero_illust').setOrigin(0.5);
         const hpBarWidth = 100; const hpBarHeight = 10;
         const heroHpBarX = this.heroIllust.x - hpBarWidth / 2; 
         const heroHpBarY = this.heroIllust.y - this.heroIllust.displayHeight / 2 - 25; 
@@ -651,7 +651,7 @@ class CombatScene extends Phaser.Scene {
             // 1. enemyData에 illustKey가 있고(ex: 'slime_illust') 1단계에서 로드에 성공했다면
             if (enemyData.illustKey && this.textures.exists(enemyData.illustKey)) {
                 // 해당 키의 이미지(ex: 'slime_illust')를 사용 (setTint 제거)
-                enemyIllust = this.add.image(enemyX, enemyY, enemyData.illustKey).setDisplaySize(100, 140).setOrigin(0.5);
+                enemyIllust = this.add.image(enemyX, enemyY, enemyData.illustKey).setOrigin(0.5);
             } else {
                 // 2. illustKey가 없거나 로드되지 않았다면 (기존 방식)
                 enemyIllust = this.add.image(enemyX, enemyY, 'pixel').setDisplaySize(100, 140).setTint(enemyData.color).setOrigin(0.5); 
@@ -1147,6 +1147,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
