@@ -41,86 +41,94 @@ class GameScene extends Phaser.Scene {
         this.load.image('skeleton_illlust', 'skeleton_illust.png');
     }
 
-    initLoopArea(gameSize) {
-        // gameSize: Phaser.Scale.GameSize { width, height } passed from redraw or create
-        const gameWidth = gameSize.width;
-        const gameHeight = gameSize.height;
-    
-        // 루프가 들어갈 '정사각 영역'의 픽셀 크기 (화면의 절반 기준)
-        const loopPixelSide = Math.floor(Math.min(gameWidth, gameHeight) * 0.5); // 화면 절반, square
-    
-        // loop tile count (fixed): use the smaller of GRID_WIDTH, GRID_HEIGHT to keep square tile-grid
-        const loopTileCount = Math.min(this.GRID_WIDTH, this.GRID_HEIGHT);
-    
-        // tileSize (px): tile 개수 고정 방식 -> 타일 크기는 픽셀영역 / 타일개수
-        const tileSize = Math.max(4, Math.floor(loopPixelSide / loopTileCount)); // 최소 픽셀 사이즈 방어
-    
-        // 실제 loop 영역의 총 픽셀 크기(타일 크기로 재계산)
-        const realLoopPixelSide = tileSize * loopTileCount;
-    
-        // 화면 중심에 맞춰 loop 영역의 픽셀 오프셋 계산
-        const mapOffsetX = Math.floor((gameWidth - realLoopPixelSide) / 2);
-        const mapOffsetY = Math.floor((gameHeight - realLoopPixelSide) / 2);
-    
-        // grid 내부 인덱스 오프셋: 기존 this.GRID_WIDTH/HEIGHT 안에서 중앙 정렬
-        const gridOffsetX = Math.floor((this.GRID_WIDTH - loopTileCount) / 2);
-        const gridOffsetY = Math.floor((this.GRID_HEIGHT - loopTileCount) / 2);
-    
-        // 저장 (다른 코드에서 사용 가능하도록)
-        this.LOOP_TILE_COUNT = loopTileCount;
-        this.LOOP_TILE_SIZE = tileSize;
-        this.LOOP_PIXEL_SIDE = realLoopPixelSide;
-        this.LOOP_MAP_OFFSET_X = mapOffsetX;
-        this.LOOP_MAP_OFFSET_Y = mapOffsetY;
-        this.LOOP_GRID_OFFSET_X = gridOffsetX;
-        this.LOOP_GRID_OFFSET_Y = gridOffsetY;
-    
-        // (선택적) 기존 TILE_SIZE를 덮어쓰면 redraw에서 바로 반영됨.
-        this.TILE_SIZE = tileSize;
-        // MAP_OFFSET_X/Y가 redraw에서 사용된다면 사용. (없으면 redraw에 이 값 사용하도록 소폭 수정 필요)
-        this.MAP_OFFSET_X = mapOffsetX;
-        this.MAP_OFFSET_Y = mapOffsetY;
+    // ---------------- Helper: weighted picker ----------------
+    pickWeighted(values, weights) {
+        // values: array, weights: array same length
+        let total = 0;
+        for (let w of weights) total += w;
+        let r = Math.random() * total;
+        for (let i = 0; i < values.length; i++) {
+            r -= weights[i];
+            if (r <= 0) return values[i];
+        }
+        return values[values.length - 1];
     }
-
-    astarRoute(grid, start, goal) {
-        const loopN = grid.length;
-        const open = [];
-        const closed = new Set();
-        const hash = (p)=>`${p.x},${p.y}`;
     
-        open.push({ x:start.x, y:start.y, g:0, f:0, parent:null});
-    
+    // ---------------- Helper: A* fallback (local grid coords are global GRID coords) ----------------
+    astarRoute(gridBlocked, start, goal) {
+        // gridBlocked: 2D boolean grid where true = blocked (occupied by path)
+        const W = gridBlocked[0].length, H = gridBlocked.length;
+        const hash = (p) => `${p.x},${p.y}`;
         const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-        const heuristic = (x,y)=>Math.abs(x-goal.x)+Math.abs(y-goal.y);
+        const heuristic = (x,y) => Math.abs(x - goal.x) + Math.abs(y - goal.y);
     
-        while(open.length>0){
-            open.sort((a,b)=>a.f-b.f);
+        const open = [];
+        const openMap = new Map();
+        const closed = new Set();
+    
+        const pushNode = (n) => { open.push(n); openMap.set(hash(n), n); };
+    
+        pushNode({ x: start.x, y: start.y, g: 0, f: heuristic(start.x,start.y), parent: null });
+    
+        while(open.length > 0) {
+            open.sort((a,b)=>a.f - b.f);
             const cur = open.shift();
-            if(cur.x===goal.x && cur.y===goal.y){
+            openMap.delete(hash(cur));
+            if (cur.x === goal.x && cur.y === goal.y) {
                 // reconstruct
-                const path=[];
-                let c=cur;
-                while(c.parent){ path.push({x:c.x,y:c.y}); c=c.parent; }
-                return path.reverse();
+                const out = [];
+                let node = cur;
+                while(node.parent) {
+                    out.push({ x: node.x, y: node.y});
+                    node = node.parent;
+                }
+                out.reverse();
+                return out;
             }
             closed.add(hash(cur));
-            for(const [dx,dy] of dirs){
-                const nx=cur.x+dx, ny=cur.y+dy;
-                if(nx<0||ny<0||ny>=loopN||nx>=loopN) continue;
-                if(grid[ny][nx]===1) continue; // path occupied -> block
-                const key=hash({x:nx,y:ny});
-                if(closed.has(key)) continue;
-                const g=cur.g+1;
-                const f=g+heuristic(nx,ny);
-                const exist=open.find(o=>o.x===nx&&o.y===ny);
-                if(!exist||g<exist.g){
-                    const node={x:nx,y:ny,g,f,parent:cur};
-                    if(!exist) open.push(node);
-                    else { exist.g=g; exist.f=f; exist.parent=cur; }
+            for (const [dx,dy] of dirs) {
+                const nx = cur.x + dx, ny = cur.y + dy;
+                if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+                if (gridBlocked[ny][nx]) continue; // can't step onto existing path
+                const key = `${nx},${ny}`;
+                if (closed.has(key)) continue;
+                const g = cur.g + 1;
+                const f = g + heuristic(nx, ny);
+                const exist = openMap.get(key);
+                if (!exist || g < exist.g) {
+                    const node = { x: nx, y: ny, g, f, parent: cur };
+                    if (!exist) pushNode(node);
+                    else { exist.g = g; exist.f = f; exist.parent = cur; }
                 }
             }
         }
         return null;
+    }
+    
+    // ---------------- initLoopArea: compute offsets and tile size to center the loop area (square = half-screen) ----------------
+    initLoopArea(gameSize) {
+        const gameWidth = gameSize.width;
+        const gameHeight = gameSize.height;
+        const loopPixelSide = Math.floor(Math.min(gameWidth, gameHeight) * 0.5); // 화면 절반, square
+    
+        // We'll keep TILE_SIZE scaled so tile count is flexible; tile count is not fixed here.
+        // But keep TILE_SIZE >= 4 px for safety.
+        // Use existing this.GRID_WIDTH/HEIGHT to compute grid offsets (centered)
+        const loopTileGridSize = Math.min(this.GRID_WIDTH, this.GRID_HEIGHT);
+        const tileSize = Math.max(4, Math.floor(loopPixelSide / loopTileGridSize));
+    
+        const realLoopPixelSide = tileSize * loopTileGridSize;
+        const mapOffsetX = Math.floor((gameWidth - realLoopPixelSide) / 2);
+        const mapOffsetY = Math.floor((gameHeight - realLoopPixelSide) / 2);
+    
+        this.LOOP_TILE_GRID_SIZE = loopTileGridSize; // for debugging / future use
+        this.LOOP_TILE_SIZE = tileSize;
+        this.LOOP_PIXEL_SIDE = realLoopPixelSide;
+        this.MAP_OFFSET_X = mapOffsetX;
+        this.MAP_OFFSET_Y = mapOffsetY;
+    
+        // ensure redraw uses TILE_SIZE if it references it
+        this.TILE_SIZE = tileSize;
     }
     
     create() {
@@ -249,221 +257,179 @@ class GameScene extends Phaser.Scene {
         if (!this.isInitialDrawComplete || !this.hero || !this.hero.active) return;
         if (!this.startingCombat) { this.moveHero(); }
     }
+    
     generateRandomLoop() {
-    // prepare grid
-    this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(TILE_TYPE_EMPTY));
-    this.pathCoords = [];
-    this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] };
-
-    // compute loop area metrics based on current game size
-    // If gameSize is not available here, use this.scale.gameSize if Phaser, else fallback to canvas size
-    const gameSize = this.scale && this.scale.gameSize ? this.scale.gameSize : { width: window.innerWidth, height: window.innerHeight };
-    this.initLoopArea(gameSize);
-
-    const loopN = this.LOOP_TILE_COUNT;
-    const gridOffsetX = this.LOOP_GRID_OFFSET_X;
-    const gridOffsetY = this.LOOP_GRID_OFFSET_Y;
-
-    // helper: convert local loop coords (0..loopN-1) to global grid coords
-    const toGlobal = (lx, ly) => ({ x: lx + gridOffsetX, y: ly + gridOffsetY });
-
-    // Try to generate multiple times before giving up
-    const MAX_ATTEMPTS = 200;
-    let attempt = 0;
-    let success = false;
-
-    while (attempt++ < MAX_ATTEMPTS && !success) {
-        // clear temp path marks
-        let tempGrid = Array(loopN).fill(0).map(() => Array(loopN).fill(0));
-        const path = [];
-
-        // 1) pick control points (7) in full loop area uniformly
-        const controlCount = 7;
-        const controlPoints = [];
-        // We avoid exact corners to help routing
-        const margin = 1;
-        for (let i = 0; i < controlCount; i++) {
-            let tries = 0;
-            while (tries++ < 30) {
-                const cx = Phaser.Math.Between(margin, loopN - 1 - margin);
-                const cy = Phaser.Math.Between(margin, loopN - 1 - margin);
-                // avoid exact duplicates in control points
-                if (!controlPoints.some(p => p.x === cx && p.y === cy)) {
-                    controlPoints.push({ x: cx, y: cy });
-                    break;
-                }
+        // reset
+        this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(TILE_TYPE_EMPTY));
+        this.pathCoords = [];
+        this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] };
+    
+        // init loop area (use Phaser size if available)
+        const gameSize = (this.scale && this.scale.gameSize) ? this.scale.gameSize : { width: window.innerWidth, height: window.innerHeight };
+        this.initLoopArea(gameSize);
+    
+        const MAX_ATTEMPTS = 300;
+        let attempt = 0;
+        let success = false;
+    
+        // weighted target length array (30..40) biased to 36 (center)
+        const values = [30,31,32,33,34,35,36,37,38,39,40];
+        // weights: bias to 36 (index 6)
+        const weights = [1,1,1,2,3,5,10,5,3,2,1]; // sum 34, 36 most likely
+    
+        while (attempt++ < MAX_ATTEMPTS && !success) {
+            // pick weighted target
+            const targetLen = this.pickWeighted(values, weights);
+    
+            // temp blocked grid (true = occupied by path)
+            const blocked = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(false));
+    
+            // control points: 7 points, picked inside central domain (15%..85%) to avoid rim-corner bias
+            const cpCount = 7;
+            const minX = Math.floor(this.GRID_WIDTH * 0.15), maxX = Math.max(minX+1, Math.ceil(this.GRID_WIDTH * 0.85) - 1);
+            const minY = Math.floor(this.GRID_HEIGHT * 0.15), maxY = Math.max(minY+1, Math.ceil(this.GRID_HEIGHT * 0.85) - 1);
+    
+            const cps = [];
+            let triesCP = 0;
+            while (cps.length < cpCount && triesCP++ < 200) {
+                const cx = Phaser.Math.Between(minX, maxX);
+                const cy = Phaser.Math.Between(minY, maxY);
+                if (!cps.some(p => p.x === cx && p.y === cy)) cps.push({ x: cx, y: cy });
             }
-        }
-        if (controlPoints.length < controlCount) continue; // fail, retry
-
-        // 2) order control points by angle from center to produce a sensible loop (reduces crossing)
-        const center = { x: (loopN - 1) / 2, y: (loopN - 1) / 2 };
-        controlPoints.sort((a, b) => Math.atan2(a.y - center.y, a.x - center.x) - Math.atan2(b.y - center.y, b.x - center.x));
-
-        // 3) build Manhattan path between consecutive control points, ensure no crossing (self-cross disallowed)
-        const segments = [...controlPoints, controlPoints[0]]; // close the loop
-        let routeOk = true;
-
-        const markCell = (x, y) => {
-            if (tempGrid[y][x] === 1) return false; // would cross
-            tempGrid[y][x] = 1;
-            path.push({ x, y });
-            return true;
-        };
-
-        // start by marking the first control point
-        if (!markCell(segments[0].x, segments[0].y)) routeOk = false;
-
-        for (let s = 0; s < segments.length - 1 && routeOk; s++) {
-            const a = segments[s];
-            const b = segments[s + 1];
-            // attempt two ordering heuristics to connect: horizontal-then-vertical, or vertical-then-horizontal
-            const tryConnect = (order) => {
-                let cx = a.x, cy = a.y;
-                const cells = [];
-                if (order === 'HV') {
-                    // horizontal moves
-                    const stepX = cx < b.x ? 1 : -1;
-                    while (cx !== b.x) { cx += stepX; cells.push({ x: cx, y: cy }); }
-                    const stepY = cy < b.y ? 1 : -1;
-                    while (cy !== b.y) { cy += stepY; cells.push({ x: cx, y: cy }); }
-                } else {
-                    // vertical first
-                    const stepY = cy < b.y ? 1 : -1;
-                    while (cy !== b.y) { cy += stepY; cells.push({ x: cx, y: cy }); }
-                    const stepX = cx < b.x ? 1 : -1;
-                    while (cx !== b.x) { cx += stepX; cells.push({ x: cx, y: cy }); }
-                }
-                // check for crossing
-                for (const c of cells) {
-                    if (tempGrid[c.y][c.x] === 1) return false; // crossing
-                }
-                // mark them
-                for (const c of cells) {
-                    tempGrid[c.y][c.x] = 1;
-                    path.push({ x: c.x, y: c.y });
-                }
+            if (cps.length < cpCount) continue; // failed cp pick, retry
+    
+            // sort by angle around center to reduce crossing
+            const center = { x: (this.GRID_WIDTH-1)/2, y: (this.GRID_HEIGHT-1)/2 };
+            cps.sort((a,b) => Math.atan2(a.y-center.y, a.x-center.x) - Math.atan2(b.y-center.y, b.x-center.x));
+    
+            // close loop
+            const segments = [...cps, cps[0]];
+    
+            const pathLocal = []; // sequence of global grid coords (x,y)
+            let routeOk = true;
+    
+            const mark = (x,y) => {
+                if (blocked[y][x]) return false;
+                blocked[y][x] = true;
+                pathLocal.push({ x, y });
                 return true;
             };
-
-            // try HV first, then VH
-            if (!tryConnect('HV')) {
-                if (!tryConnect('VH')) {
-                    // ---- 기존 routeOk = false; 삭제 ----
-                    // A* fallback
-                    const astarPath = this.astarRoute(tempGrid, a, b);
-                    if (!astarPath) {
-                        routeOk = false;
+    
+            // mark first control point
+            if (!mark(segments[0].x, segments[0].y)) routeOk = false;
+    
+            for (let s = 0; s < segments.length - 1 && routeOk; s++) {
+                const a = segments[s];
+                const b = segments[s+1];
+    
+                // try HV then VH
+                const tryConnect = (order) => {
+                    let cx = a.x, cy = a.y;
+                    const cells = [];
+                    if (order === 'HV') {
+                        const stepX = cx < b.x ? 1 : -1;
+                        while (cx !== b.x) { cx += stepX; cells.push({ x: cx, y: cy }); }
+                        const stepY = cy < b.y ? 1 : -1;
+                        while (cy !== b.y) { cy += stepY; cells.push({ x: cx, y: cy }); }
                     } else {
-                        for(const c of astarPath) {
-                            tempGrid[c.y][c.x] = 1;
-                            path.push({ x: c.x, y: c.y });
+                        const stepY = cy < b.y ? 1 : -1;
+                        while (cy !== b.y) { cy += stepY; cells.push({ x: cx, y: cy }); }
+                        const stepX = cx < b.x ? 1 : -1;
+                        while (cx !== b.x) { cx += stepX; cells.push({ x: cx, y: cy }); }
+                    }
+                    // check crossing
+                    for (const c of cells) {
+                        if (blocked[c.y][c.x]) return false;
+                    }
+                    // mark
+                    for (const c of cells) {
+                        blocked[c.y][c.x] = true;
+                        pathLocal.push({ x: c.x, y: c.y });
+                    }
+                    return true;
+                };
+    
+                if (!tryConnect('HV')) {
+                    if (!tryConnect('VH')) {
+                        // A* fallback (global coords)
+                        const astarPath = this.astarRoute(blocked, a, b);
+                        if (!astarPath) {
+                            routeOk = false;
+                            break;
+                        } else {
+                            for (const c of astarPath) {
+                                // final safety check
+                                if (blocked[c.y][c.x]) { routeOk = false; break; }
+                                blocked[c.y][c.x] = true;
+                                pathLocal.push({ x: c.x, y: c.y });
+                            }
+                            if (!routeOk) break;
                         }
                     }
                 }
+            } // end segments
+    
+            if (!routeOk) continue; // retry
+    
+            // pathLocal now contains the cycle (with possible duplicates). Extract unique cycle in traversal order
+            // For simplicity, compress consecutive duplicates and then ensure cycle length close to target.
+            // Remove immediate repeats
+            const compressed = [];
+            for (let i=0;i<pathLocal.length;i++){
+                const p = pathLocal[i];
+                const last = compressed[compressed.length-1];
+                if (!last || last.x !== p.x || last.y !== p.y) compressed.push(p);
             }
-        }
-
-        // final check: path length reasonable
-        if (!routeOk || path.length < 8) {
-            continue; // retry
-        }
-
-        // also ensure final closed loop does not leave isolated pockets (simple heuristic)
-        // optional: could run flood fill to ensure path is a single cycle — skipped for speed (could be added later)
-        // If reached here, accept
-        success = true;
-
-        // write tempGrid into global this.grid at centered offsets
-        for (let ly = 0; ly < loopN; ly++) {
-            for (let lx = 0; lx < loopN; lx++) {
-                if (tempGrid[ly][lx] === 1) {
-                    const g = toGlobal(lx, ly);
-                    this.setGrid(g.x, g.y, TILE_TYPE_PATH);
-                }
+    
+            // Now attempt to trace a single ordered cycle starting from a cell near center
+            // Find a start cell (first compressed entry that is adjacent to center region)
+            let startIdx = 0;
+            for (let i=0;i<compressed.length;i++) {
+                const p = compressed[i];
+                if (Math.abs(p.x - center.x) <= 2 && Math.abs(p.y - center.y) <= 2) { startIdx = i; break; }
             }
-        }
-
-        // create ordered this.pathCoords by walking from start (grid center) along path neighbors
-        // We'll reconstruct pathCoords by tracing neighbors starting from the start tile near center
-        // find a start tile near center
-        let startLocal = { x: Math.floor(loopN / 2), y: Math.floor(loopN / 2) };
-        // if center not path, find nearest path cell
-        if (tempGrid[startLocal.y][startLocal.x] !== 1) {
-            let found = false;
-            for (let r = 1; r < loopN && !found; r++) {
-                for (let dy = -r; dy <= r && !found; dy++) {
-                    for (let dx = -r; dx <= r && !found; dx++) {
-                        const nx = startLocal.x + dx, ny = startLocal.y + dy;
-                        if (nx >= 0 && nx < loopN && ny >= 0 && ny < loopN && tempGrid[ny][nx] === 1) {
-                            startLocal = { x: nx, y: ny }; found = true;
-                        }
-                    }
-                }
+            // rotate compressed so that startIdx is first
+            const rotated = [...compressed.slice(startIdx), ...compressed.slice(0,startIdx)];
+    
+            // dedupe while preserving order (keep first occurrence)
+            const seen = new Set();
+            const finalPath = [];
+            for (const p of rotated) {
+                const key = `${p.x},${p.y}`;
+                if (!seen.has(key)) { finalPath.push(p); seen.add(key); }
             }
-        }
-        // trace cycle: follow neighbor that is path and not the previous cell
-        const visitedSet = new Set();
-        let cur = { ...startLocal };
-        let prev = null;
-        const localToKey = (p) => `${p.x},${p.y}`;
-        do {
-            visitedSet.add(localToKey(cur));
-            const globalCur = toGlobal(cur.x, cur.y);
-            this.pathCoords.push({ x: globalCur.x, y: globalCur.y });
-            // find next neighbor
-            const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-            let next = null;
-            for (const [dx,dy] of dirs) {
-                const nx = cur.x + dx, ny = cur.y + dy;
-                if (nx >= 0 && nx < loopN && ny >= 0 && ny < loopN && tempGrid[ny][nx] === 1) {
-                    if (!prev || nx !== prev.x || ny !== prev.y) {
-                        next = { x: nx, y: ny };
-                        break;
-                    }
-                }
+    
+            // finalPath is our candidate loop; check length
+            if (finalPath.length < 30 || finalPath.length > 40) {
+                // reject and retry (weighted length enforces bias but route may produce other lengths)
+                continue;
             }
-            prev = cur;
-            if (!next) break;
-            cur = next;
-            // safety
-            if (this.pathCoords.length > (loopN * loopN)) break;
-        } while (localToKey(cur) !== localToKey(startLocal));
-
-        // ensure we have a decent path length in global pathCoords
-        if (this.pathCoords.length < 8) {
-            // treat as fail for robustness
-            success = false;
-            // wipe any path markings in global grid (we'll regenerate)
-            for (let ly = 0; ly < loopN; ly++) {
-                for (let lx = 0; lx < loopN; lx++) {
-                    const g = toGlobal(lx, ly);
-                    if (this.grid[g.y] && this.grid[g.y][g.x] === TILE_TYPE_PATH) this.grid[g.y][g.x] = TILE_TYPE_EMPTY;
-                }
+    
+            // success: write into this.grid and this.pathCoords (global)
+            for (const p of finalPath) {
+                this.setGrid(p.x, p.y, TILE_TYPE_PATH);
+                this.pathCoords.push({ x: p.x, y: p.y });
             }
-            this.pathCoords = [];
-            continue;
+    
+            // place start
+            const s = this.pathCoords[0];
+            if (s) this.setGrid(s.x, s.y, TILE_TYPE_START);
+    
+            success = true;
+        } // end attempts
+    
+        if (!success) {
+            console.warn("generateRandomLoop(): failed to create varied loop; falling back to default.");
+            this.generateDefaultLoop();
+            this.assignSpecialTiles();
+            return;
         }
-    } // end attempts
-
-    if (!success) {
-        console.warn("generateRandomLoop(): failed to create loop after attempts, falling back to default.");
-        this.generateDefaultLoop();
+    
+        // finally assign special tiles using existing routine
         this.assignSpecialTiles();
-        return;
+        console.log("Final loop length:", this.pathCoords.length);
     }
-
-    // mark start tile (global) at the first coord
-    if (this.pathCoords.length > 0) {
-        const s = this.pathCoords[0];
-        this.setGrid(s.x, s.y, TILE_TYPE_START);
-    }
-
-    // assign special tiles using existing routine
-    this.assignSpecialTiles();
-
-    console.log("Final loop length:", this.pathCoords.length, "Loop grid offset:", this.LOOP_GRID_OFFSET_X, this.LOOP_GRID_OFFSET_Y);
-    }
+    
     setGrid(x, y, value) {
          if (y >= 0 && y < this.GRID_HEIGHT && x >= 0 && x < this.GRID_WIDTH) {
              if (!this.grid[y]) this.grid[y] = [];
@@ -1343,6 +1309,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
