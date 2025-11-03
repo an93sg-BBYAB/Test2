@@ -41,6 +41,88 @@ class GameScene extends Phaser.Scene {
         this.load.image('skeleton_illlust', 'skeleton_illust.png');
     }
 
+    initLoopArea(gameSize) {
+        // gameSize: Phaser.Scale.GameSize { width, height } passed from redraw or create
+        const gameWidth = gameSize.width;
+        const gameHeight = gameSize.height;
+    
+        // 루프가 들어갈 '정사각 영역'의 픽셀 크기 (화면의 절반 기준)
+        const loopPixelSide = Math.floor(Math.min(gameWidth, gameHeight) * 0.5); // 화면 절반, square
+    
+        // loop tile count (fixed): use the smaller of GRID_WIDTH, GRID_HEIGHT to keep square tile-grid
+        const loopTileCount = Math.min(this.GRID_WIDTH, this.GRID_HEIGHT);
+    
+        // tileSize (px): tile 개수 고정 방식 -> 타일 크기는 픽셀영역 / 타일개수
+        const tileSize = Math.max(4, Math.floor(loopPixelSide / loopTileCount)); // 최소 픽셀 사이즈 방어
+    
+        // 실제 loop 영역의 총 픽셀 크기(타일 크기로 재계산)
+        const realLoopPixelSide = tileSize * loopTileCount;
+    
+        // 화면 중심에 맞춰 loop 영역의 픽셀 오프셋 계산
+        const mapOffsetX = Math.floor((gameWidth - realLoopPixelSide) / 2);
+        const mapOffsetY = Math.floor((gameHeight - realLoopPixelSide) / 2);
+    
+        // grid 내부 인덱스 오프셋: 기존 this.GRID_WIDTH/HEIGHT 안에서 중앙 정렬
+        const gridOffsetX = Math.floor((this.GRID_WIDTH - loopTileCount) / 2);
+        const gridOffsetY = Math.floor((this.GRID_HEIGHT - loopTileCount) / 2);
+    
+        // 저장 (다른 코드에서 사용 가능하도록)
+        this.LOOP_TILE_COUNT = loopTileCount;
+        this.LOOP_TILE_SIZE = tileSize;
+        this.LOOP_PIXEL_SIDE = realLoopPixelSide;
+        this.LOOP_MAP_OFFSET_X = mapOffsetX;
+        this.LOOP_MAP_OFFSET_Y = mapOffsetY;
+        this.LOOP_GRID_OFFSET_X = gridOffsetX;
+        this.LOOP_GRID_OFFSET_Y = gridOffsetY;
+    
+        // (선택적) 기존 TILE_SIZE를 덮어쓰면 redraw에서 바로 반영됨.
+        this.TILE_SIZE = tileSize;
+        // MAP_OFFSET_X/Y가 redraw에서 사용된다면 사용. (없으면 redraw에 이 값 사용하도록 소폭 수정 필요)
+        this.MAP_OFFSET_X = mapOffsetX;
+        this.MAP_OFFSET_Y = mapOffsetY;
+    }
+
+    astarRoute(grid, start, goal) {
+        const loopN = grid.length;
+        const open = [];
+        const closed = new Set();
+        const hash = (p)=>`${p.x},${p.y}`;
+    
+        open.push({ x:start.x, y:start.y, g:0, f:0, parent:null});
+    
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+        const heuristic = (x,y)=>Math.abs(x-goal.x)+Math.abs(y-goal.y);
+    
+        while(open.length>0){
+            open.sort((a,b)=>a.f-b.f);
+            const cur = open.shift();
+            if(cur.x===goal.x && cur.y===goal.y){
+                // reconstruct
+                const path=[];
+                let c=cur;
+                while(c.parent){ path.push({x:c.x,y:c.y}); c=c.parent; }
+                return path.reverse();
+            }
+            closed.add(hash(cur));
+            for(const [dx,dy] of dirs){
+                const nx=cur.x+dx, ny=cur.y+dy;
+                if(nx<0||ny<0||ny>=loopN||nx>=loopN) continue;
+                if(grid[ny][nx]===1) continue; // path occupied -> block
+                const key=hash({x:nx,y:ny});
+                if(closed.has(key)) continue;
+                const g=cur.g+1;
+                const f=g+heuristic(nx,ny);
+                const exist=open.find(o=>o.x===nx&&o.y===ny);
+                if(!exist||g<exist.g){
+                    const node={x:nx,y:ny,g,f,parent:cur};
+                    if(!exist) open.push(node);
+                    else { exist.g=g; exist.f=f; exist.parent=cur; }
+                }
+            }
+        }
+        return null;
+    }
+    
     create() {
         console.log("GameScene create start");
         this.scene.run('UIScene');
@@ -168,109 +250,220 @@ class GameScene extends Phaser.Scene {
         if (!this.startingCombat) { this.moveHero(); }
     }
     generateRandomLoop() {
-        this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(TILE_TYPE_EMPTY));
-        this.pathCoords = [];
-        this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] };
-        const startX = Math.floor(this.GRID_WIDTH / 2);
-        const startY = Math.floor(this.GRID_HEIGHT / 2);
-        this.setGrid(startX, startY, TILE_TYPE_START);
-        let stack = [{ x: startX, y: startY }];
-        let visited = new Set([`${startX},${startY}`]);
-        let path = []; 
-        path.push({x: startX, y: startY});
-        const targetLength = Phaser.Math.Between(30, 40);
-        let failsafe = 1000; 
-        while (stack.length > 0 && path.length < targetLength && failsafe-- > 0) {
-            let current = stack[stack.length - 1];
-            let neighbors = [];
-            const directions = [[0, -2], [0, 2], [-2, 0], [2, 0]];
-            Phaser.Utils.Array.Shuffle(directions);
-            for (const [dx, dy] of directions) {
-                const nx = current.x + dx;
-                const ny = current.y + dy;
-                if (nx > 0 && nx < this.GRID_WIDTH - 1 && ny > 0 && ny < this.GRID_HEIGHT - 1 && !visited.has(`${nx},${ny}`)) {
-                    neighbors.push({ x: nx, y: ny, wallX: current.x + dx / 2, wallY: current.y + dy / 2 });
-                }
-            }
-            if (neighbors.length > 0) {
-                const next = neighbors[0];
-                this.setGrid(next.wallX, next.wallY, TILE_TYPE_PATH);
-                path.push({x: next.wallX, y: next.wallY});
-                this.setGrid(next.x, next.y, TILE_TYPE_PATH);
-                path.push({x: next.x, y: next.y});
-                visited.add(`${next.x},${next.y}`);
-                stack.push({ x: next.x, y: next.y });
-            } else {
-                stack.pop(); 
-            }
-        }
-         if (failsafe <= 0) console.warn("Maze generation timeout!");
-        let lastPos = path[path.length-1];
-         if (lastPos && (lastPos.x !== startX || lastPos.y !== startY)) {
-             if (Math.abs(lastPos.x - startX) === 1 && lastPos.y === startY && this.grid[startY]?.[Math.min(lastPos.x, startX)] === TILE_TYPE_EMPTY) {
-                  this.setGrid(Math.min(lastPos.x, startX), startY, TILE_TYPE_PATH); path.push({x: Math.min(lastPos.x, startX), y: startY});
-             } else if (Math.abs(lastPos.y - startY) === 1 && lastPos.x === startX && this.grid[Math.min(lastPos.y, startY)]?.[startX] === TILE_TYPE_EMPTY) {
-                  this.setGrid(startX, Math.min(lastPos.y, startY), TILE_TYPE_PATH); path.push({x: startX, y: Math.min(lastPos.y, startY)});
-             }
-         }
-        this.pathCoords = [];
-        let current = { x: startX, y: startY };
-        let cameFrom = null; 
-        const startNeighbors = [];
-        if (this.grid[startY]?.[startX+1] >= TILE_TYPE_PATH) startNeighbors.push({x: startX+1, y: startY});
-        if (this.grid[startY+1]?.[startX] >= TILE_TYPE_PATH) startNeighbors.push({x: startX, y: startY+1});
-        if (this.grid[startY]?.[startX-1] >= TILE_TYPE_PATH) startNeighbors.push({x: startX-1, y: startY});
-        if (this.grid[startY-1]?.[startX] >= TILE_TYPE_PATH) startNeighbors.push({x: startX, y: startY-1});
-        if (startNeighbors.length < 2) { 
-             console.error("Loop start point is invalid after maze gen, neighbors:", startNeighbors.length);
-             this.generateDefaultLoop();
-             this.assignSpecialTiles();
-             return;
-        }
-        cameFrom = startNeighbors[0]; 
-        do {
-            this.pathCoords.push({ ...current });
-            const neighbors = this.getPathNeighbors(current.x, current.y);
-            let next = null;
-            if (neighbors.length !== 2 && !(current.x === startX && current.y === startY && neighbors.length > 0)) { 
-                 console.error(`Path generation error: Invalid neighbor count (${neighbors.length}) at`, current);
-                  this.generateDefaultLoop();
-                  this.assignSpecialTiles();
-                  return;
-            }
-             const searchOrder = [
-                 { x: current.x + 1, y: current.y }, // 우
-                 { x: current.x, y: current.y + 1 }, // 하
-                 { x: current.x - 1, y: current.y }, // 좌
-                 { x: current.x, y: current.y - 1 }  // 상
-             ];
-            for (const potentialNext of searchOrder) {
-                const isNeighbor = neighbors.some(n => n.x === potentialNext.x && n.y === potentialNext.y);
-                const isCameFrom = cameFrom && (potentialNext.x === cameFrom.x && potentialNext.y === cameFrom.y);
-                if (isNeighbor && !isCameFrom) {
-                    next = potentialNext;
-                    break;
-                }
-            }
-             if (!next && current.x === startX && current.y === startY && this.pathCoords.length > 1) {
-                  break; // 루프 완성
-             } else if (!next) {
-                  console.error("Path trace error: Cannot find next clockwise step from", current);
-                  this.generateDefaultLoop();
-                  this.assignSpecialTiles();
-                  return;
-             }
-            cameFrom = { ...current };
-            current = { ...next };
-        } while ((current.x !== startX || current.y !== startY) && this.pathCoords.length <= (this.GRID_WIDTH * this.GRID_HEIGHT));
-        if (this.pathCoords.length < 10 || this.pathCoords.length > (this.GRID_WIDTH * this.GRID_HEIGHT)) {
-             console.warn("Final loop trace failed or invalid length, creating default loop.");
-             this.generateDefaultLoop();
-        }
-        this.assignSpecialTiles();
-        console.log("Final loop length:", this.pathCoords.length);
-        console.log("Final Special Tiles:", this.specialTileCoords);
-    }
+    // prepare grid
+    this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(TILE_TYPE_EMPTY));
+    this.pathCoords = [];
+    this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] };
+
+    // compute loop area metrics based on current game size
+    // If gameSize is not available here, use this.scale.gameSize if Phaser, else fallback to canvas size
+    const gameSize = this.scale && this.scale.gameSize ? this.scale.gameSize : { width: window.innerWidth, height: window.innerHeight };
+    this.initLoopArea(gameSize);
+
+    const loopN = this.LOOP_TILE_COUNT;
+    const gridOffsetX = this.LOOP_GRID_OFFSET_X;
+    const gridOffsetY = this.LOOP_GRID_OFFSET_Y;
+
+    // helper: convert local loop coords (0..loopN-1) to global grid coords
+    const toGlobal = (lx, ly) => ({ x: lx + gridOffsetX, y: ly + gridOffsetY });
+
+    // Try to generate multiple times before giving up
+    const MAX_ATTEMPTS = 200;
+    let attempt = 0;
+    let success = false;
+
+    while (attempt++ < MAX_ATTEMPTS && !success) {
+        // clear temp path marks
+        let tempGrid = Array(loopN).fill(0).map(() => Array(loopN).fill(0));
+        const path = [];
+
+        // 1) pick control points (7) in full loop area uniformly
+        const controlCount = 7;
+        const controlPoints = [];
+        // We avoid exact corners to help routing
+        const margin = 1;
+        for (let i = 0; i < controlCount; i++) {
+            let tries = 0;
+            while (tries++ < 30) {
+                const cx = Phaser.Math.Between(margin, loopN - 1 - margin);
+                const cy = Phaser.Math.Between(margin, loopN - 1 - margin);
+                // avoid exact duplicates in control points
+                if (!controlPoints.some(p => p.x === cx && p.y === cy)) {
+                    controlPoints.push({ x: cx, y: cy });
+                    break;
+                }
+            }
+        }
+        if (controlPoints.length < controlCount) continue; // fail, retry
+
+        // 2) order control points by angle from center to produce a sensible loop (reduces crossing)
+        const center = { x: (loopN - 1) / 2, y: (loopN - 1) / 2 };
+        controlPoints.sort((a, b) => Math.atan2(a.y - center.y, a.x - center.x) - Math.atan2(b.y - center.y, b.x - center.x));
+
+        // 3) build Manhattan path between consecutive control points, ensure no crossing (self-cross disallowed)
+        const segments = [...controlPoints, controlPoints[0]]; // close the loop
+        let routeOk = true;
+
+        const markCell = (x, y) => {
+            if (tempGrid[y][x] === 1) return false; // would cross
+            tempGrid[y][x] = 1;
+            path.push({ x, y });
+            return true;
+        };
+
+        // start by marking the first control point
+        if (!markCell(segments[0].x, segments[0].y)) routeOk = false;
+
+        for (let s = 0; s < segments.length - 1 && routeOk; s++) {
+            const a = segments[s];
+            const b = segments[s + 1];
+            // attempt two ordering heuristics to connect: horizontal-then-vertical, or vertical-then-horizontal
+            const tryConnect = (order) => {
+                let cx = a.x, cy = a.y;
+                const cells = [];
+                if (order === 'HV') {
+                    // horizontal moves
+                    const stepX = cx < b.x ? 1 : -1;
+                    while (cx !== b.x) { cx += stepX; cells.push({ x: cx, y: cy }); }
+                    const stepY = cy < b.y ? 1 : -1;
+                    while (cy !== b.y) { cy += stepY; cells.push({ x: cx, y: cy }); }
+                } else {
+                    // vertical first
+                    const stepY = cy < b.y ? 1 : -1;
+                    while (cy !== b.y) { cy += stepY; cells.push({ x: cx, y: cy }); }
+                    const stepX = cx < b.x ? 1 : -1;
+                    while (cx !== b.x) { cx += stepX; cells.push({ x: cx, y: cy }); }
+                }
+                // check for crossing
+                for (const c of cells) {
+                    if (tempGrid[c.y][c.x] === 1) return false; // crossing
+                }
+                // mark them
+                for (const c of cells) {
+                    tempGrid[c.y][c.x] = 1;
+                    path.push({ x: c.x, y: c.y });
+                }
+                return true;
+            };
+
+            // try HV first, then VH
+            if (!tryConnect('HV')) {
+                if (!tryConnect('VH')) {
+                    // ---- 기존 routeOk = false; 삭제 ----
+                    // A* fallback
+                    const astarPath = this.astarRoute(tempGrid, a, b);
+                    if (!astarPath) {
+                        routeOk = false;
+                    } else {
+                        for(const c of astarPath) {
+                            tempGrid[c.y][c.x] = 1;
+                            path.push({ x: c.x, y: c.y });
+                        }
+                    }
+                }
+            }
+        }
+
+        // final check: path length reasonable
+        if (!routeOk || path.length < 8) {
+            continue; // retry
+        }
+
+        // also ensure final closed loop does not leave isolated pockets (simple heuristic)
+        // optional: could run flood fill to ensure path is a single cycle — skipped for speed (could be added later)
+        // If reached here, accept
+        success = true;
+
+        // write tempGrid into global this.grid at centered offsets
+        for (let ly = 0; ly < loopN; ly++) {
+            for (let lx = 0; lx < loopN; lx++) {
+                if (tempGrid[ly][lx] === 1) {
+                    const g = toGlobal(lx, ly);
+                    this.setGrid(g.x, g.y, TILE_TYPE_PATH);
+                }
+            }
+        }
+
+        // create ordered this.pathCoords by walking from start (grid center) along path neighbors
+        // We'll reconstruct pathCoords by tracing neighbors starting from the start tile near center
+        // find a start tile near center
+        let startLocal = { x: Math.floor(loopN / 2), y: Math.floor(loopN / 2) };
+        // if center not path, find nearest path cell
+        if (tempGrid[startLocal.y][startLocal.x] !== 1) {
+            let found = false;
+            for (let r = 1; r < loopN && !found; r++) {
+                for (let dy = -r; dy <= r && !found; dy++) {
+                    for (let dx = -r; dx <= r && !found; dx++) {
+                        const nx = startLocal.x + dx, ny = startLocal.y + dy;
+                        if (nx >= 0 && nx < loopN && ny >= 0 && ny < loopN && tempGrid[ny][nx] === 1) {
+                            startLocal = { x: nx, y: ny }; found = true;
+                        }
+                    }
+                }
+            }
+        }
+        // trace cycle: follow neighbor that is path and not the previous cell
+        const visitedSet = new Set();
+        let cur = { ...startLocal };
+        let prev = null;
+        const localToKey = (p) => `${p.x},${p.y}`;
+        do {
+            visitedSet.add(localToKey(cur));
+            const globalCur = toGlobal(cur.x, cur.y);
+            this.pathCoords.push({ x: globalCur.x, y: globalCur.y });
+            // find next neighbor
+            const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+            let next = null;
+            for (const [dx,dy] of dirs) {
+                const nx = cur.x + dx, ny = cur.y + dy;
+                if (nx >= 0 && nx < loopN && ny >= 0 && ny < loopN && tempGrid[ny][nx] === 1) {
+                    if (!prev || nx !== prev.x || ny !== prev.y) {
+                        next = { x: nx, y: ny };
+                        break;
+                    }
+                }
+            }
+            prev = cur;
+            if (!next) break;
+            cur = next;
+            // safety
+            if (this.pathCoords.length > (loopN * loopN)) break;
+        } while (localToKey(cur) !== localToKey(startLocal));
+
+        // ensure we have a decent path length in global pathCoords
+        if (this.pathCoords.length < 8) {
+            // treat as fail for robustness
+            success = false;
+            // wipe any path markings in global grid (we'll regenerate)
+            for (let ly = 0; ly < loopN; ly++) {
+                for (let lx = 0; lx < loopN; lx++) {
+                    const g = toGlobal(lx, ly);
+                    if (this.grid[g.y] && this.grid[g.y][g.x] === TILE_TYPE_PATH) this.grid[g.y][g.x] = TILE_TYPE_EMPTY;
+                }
+            }
+            this.pathCoords = [];
+            continue;
+        }
+    } // end attempts
+
+    if (!success) {
+        console.warn("generateRandomLoop(): failed to create loop after attempts, falling back to default.");
+        this.generateDefaultLoop();
+        this.assignSpecialTiles();
+        return;
+    }
+
+    // mark start tile (global) at the first coord
+    if (this.pathCoords.length > 0) {
+        const s = this.pathCoords[0];
+        this.setGrid(s.x, s.y, TILE_TYPE_START);
+    }
+
+    // assign special tiles using existing routine
+    this.assignSpecialTiles();
+
+    console.log("Final loop length:", this.pathCoords.length, "Loop grid offset:", this.LOOP_GRID_OFFSET_X, this.LOOP_GRID_OFFSET_Y);
+    }
     setGrid(x, y, value) {
          if (y >= 0 && y < this.GRID_HEIGHT && x >= 0 && x < this.GRID_WIDTH) {
              if (!this.grid[y]) this.grid[y] = [];
@@ -1150,6 +1343,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
