@@ -259,53 +259,50 @@ class GameScene extends Phaser.Scene {
     }
     
     generateRandomLoop() {
-        // reset
+        // reset data
         this.grid = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(TILE_TYPE_EMPTY));
         this.pathCoords = [];
         this.specialTileCoords = { [TILE_TYPE_ENEMY2]: [], [TILE_TYPE_ENEMY3]: [], [TILE_TYPE_ENEMY5]: [] };
     
-        // init loop area (use Phaser size if available)
+        // init pixel/tile offsets
         const gameSize = (this.scale && this.scale.gameSize) ? this.scale.gameSize : { width: window.innerWidth, height: window.innerHeight };
         this.initLoopArea(gameSize);
     
-        const MAX_ATTEMPTS = 300;
+        const MAX_ATTEMPTS = 1000; // 더 많은 시도로 성공확률 증가
         let attempt = 0;
         let success = false;
     
-        // weighted target length array (30..40) biased to 36 (center)
+        // weighted target length array (30..40) biased to center 36
         const values = [30,31,32,33,34,35,36,37,38,39,40];
-        // weights: bias to 36 (index 6)
-        const weights = [1,1,1,2,3,5,10,5,3,2,1]; // sum 34, 36 most likely
+        const weights = [1,1,1,2,3,5,10,5,3,2,1];
     
         while (attempt++ < MAX_ATTEMPTS && !success) {
-            // pick weighted target
             const targetLen = this.pickWeighted(values, weights);
     
-            // temp blocked grid (true = occupied by path)
+            // blocked grid
             const blocked = Array(this.GRID_HEIGHT).fill(0).map(() => Array(this.GRID_WIDTH).fill(false));
     
-            // control points: 7 points, picked inside central domain (15%..85%) to avoid rim-corner bias
-            const cpCount = 7;
-            const minX = Math.floor(this.GRID_WIDTH * 0.15), maxX = Math.max(minX+1, Math.ceil(this.GRID_WIDTH * 0.85) - 1);
-            const minY = Math.floor(this.GRID_HEIGHT * 0.15), maxY = Math.max(minY+1, Math.ceil(this.GRID_HEIGHT * 0.85) - 1);
+            // control points: increase to 9 for richer shapes; domain 10%..90% to allow more spread
+            const cpCount = 9;
+            const minX = Math.floor(this.GRID_WIDTH * 0.10), maxX = Math.max(minX + 1, Math.ceil(this.GRID_WIDTH * 0.90) - 1);
+            const minY = Math.floor(this.GRID_HEIGHT * 0.10), maxY = Math.max(minY + 1, Math.ceil(this.GRID_HEIGHT * 0.90) - 1);
     
             const cps = [];
             let triesCP = 0;
-            while (cps.length < cpCount && triesCP++ < 200) {
+            while (cps.length < cpCount && triesCP++ < 400) {
                 const cx = Phaser.Math.Between(minX, maxX);
                 const cy = Phaser.Math.Between(minY, maxY);
                 if (!cps.some(p => p.x === cx && p.y === cy)) cps.push({ x: cx, y: cy });
             }
-            if (cps.length < cpCount) continue; // failed cp pick, retry
+            if (cps.length < cpCount) continue;
     
             // sort by angle around center to reduce crossing
-            const center = { x: (this.GRID_WIDTH-1)/2, y: (this.GRID_HEIGHT-1)/2 };
+            const center = { x: (this.GRID_WIDTH - 1) / 2, y: (this.GRID_HEIGHT - 1) / 2 };
             cps.sort((a,b) => Math.atan2(a.y-center.y, a.x-center.x) - Math.atan2(b.y-center.y, b.x-center.x));
     
             // close loop
             const segments = [...cps, cps[0]];
-    
-            const pathLocal = []; // sequence of global grid coords (x,y)
+            const pathLocal = [];
             let routeOk = true;
     
             const mark = (x,y) => {
@@ -315,14 +312,11 @@ class GameScene extends Phaser.Scene {
                 return true;
             };
     
-            // mark first control point
             if (!mark(segments[0].x, segments[0].y)) routeOk = false;
     
             for (let s = 0; s < segments.length - 1 && routeOk; s++) {
-                const a = segments[s];
-                const b = segments[s+1];
+                const a = segments[s], b = segments[s+1];
     
-                // try HV then VH
                 const tryConnect = (order) => {
                     let cx = a.x, cy = a.y;
                     const cells = [];
@@ -337,61 +331,42 @@ class GameScene extends Phaser.Scene {
                         const stepX = cx < b.x ? 1 : -1;
                         while (cx !== b.x) { cx += stepX; cells.push({ x: cx, y: cy }); }
                     }
-                    // check crossing
-                    for (const c of cells) {
-                        if (blocked[c.y][c.x]) return false;
-                    }
-                    // mark
-                    for (const c of cells) {
-                        blocked[c.y][c.x] = true;
-                        pathLocal.push({ x: c.x, y: c.y });
-                    }
+                    for (const c of cells) { if (blocked[c.y][c.x]) return false; }
+                    for (const c of cells) { blocked[c.y][c.x] = true; pathLocal.push({ x: c.x, y: c.y }); }
                     return true;
                 };
     
                 if (!tryConnect('HV')) {
                     if (!tryConnect('VH')) {
-                        // A* fallback (global coords)
                         const astarPath = this.astarRoute(blocked, a, b);
-                        if (!astarPath) {
-                            routeOk = false;
-                            break;
-                        } else {
-                            for (const c of astarPath) {
-                                // final safety check
-                                if (blocked[c.y][c.x]) { routeOk = false; break; }
-                                blocked[c.y][c.x] = true;
-                                pathLocal.push({ x: c.x, y: c.y });
-                            }
-                            if (!routeOk) break;
+                        if (!astarPath) { routeOk = false; break; }
+                        for (const c of astarPath) {
+                            if (blocked[c.y][c.x]) { routeOk = false; break; }
+                            blocked[c.y][c.x] = true;
+                            pathLocal.push({ x: c.x, y: c.y });
                         }
+                        if (!routeOk) break;
                     }
                 }
-            } // end segments
+            }
     
-            if (!routeOk) continue; // retry
+            if (!routeOk) continue;
     
-            // pathLocal now contains the cycle (with possible duplicates). Extract unique cycle in traversal order
-            // For simplicity, compress consecutive duplicates and then ensure cycle length close to target.
-            // Remove immediate repeats
+            // compress consecutive duplicates
             const compressed = [];
-            for (let i=0;i<pathLocal.length;i++){
-                const p = pathLocal[i];
-                const last = compressed[compressed.length-1];
+            for (let i = 0; i < pathLocal.length; i++) {
+                const p = pathLocal[i], last = compressed[compressed.length - 1];
                 if (!last || last.x !== p.x || last.y !== p.y) compressed.push(p);
             }
     
-            // Now attempt to trace a single ordered cycle starting from a cell near center
-            // Find a start cell (first compressed entry that is adjacent to center region)
-            let startIdx = 0;
-            for (let i=0;i<compressed.length;i++) {
-                const p = compressed[i];
-                if (Math.abs(p.x - center.x) <= 2 && Math.abs(p.y - center.y) <= 2) { startIdx = i; break; }
-            }
-            // rotate compressed so that startIdx is first
-            const rotated = [...compressed.slice(startIdx), ...compressed.slice(0,startIdx)];
+            // if too few points, reject
+            if (compressed.length < 10) continue;
     
-            // dedupe while preserving order (keep first occurrence)
+            // rotate so we begin at an arbitrary index (no risky center-based pick)
+            const startIdx = 0;
+            const rotated = [...compressed.slice(startIdx), ...compressed.slice(0, startIdx)];
+    
+            // dedupe preserving first occurrence (keeps path order)
             const seen = new Set();
             const finalPath = [];
             for (const p of rotated) {
@@ -399,24 +374,16 @@ class GameScene extends Phaser.Scene {
                 if (!seen.has(key)) { finalPath.push(p); seen.add(key); }
             }
     
-            // finalPath is our candidate loop; check length
-            if (finalPath.length < 30 || finalPath.length > 40) {
-                // reject and retry (weighted length enforces bias but route may produce other lengths)
-                continue;
-            }
+            // final length check (allow small tolerance)
+            if (finalPath.length < 30 || finalPath.length > 40) continue;
     
-            // success: write into this.grid and this.pathCoords (global)
-            for (const p of finalPath) {
-                this.setGrid(p.x, p.y, TILE_TYPE_PATH);
-                this.pathCoords.push({ x: p.x, y: p.y });
-            }
-    
-            // place start
+            // write to grid & pathCoords
+            for (const p of finalPath) { this.setGrid(p.x, p.y, TILE_TYPE_PATH); this.pathCoords.push({ x: p.x, y: p.y }); }
             const s = this.pathCoords[0];
             if (s) this.setGrid(s.x, s.y, TILE_TYPE_START);
     
             success = true;
-        } // end attempts
+        }
     
         if (!success) {
             console.warn("generateRandomLoop(): failed to create varied loop; falling back to default.");
@@ -425,7 +392,6 @@ class GameScene extends Phaser.Scene {
             return;
         }
     
-        // finally assign special tiles using existing routine
         this.assignSpecialTiles();
         console.log("Final loop length:", this.pathCoords.length);
     }
@@ -1309,6 +1275,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // --- 파일 끝 ---
+
 
 
 
